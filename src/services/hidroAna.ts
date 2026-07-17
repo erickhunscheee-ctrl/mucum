@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 
+import { apiErrorMessage, readJsonResponse } from './httpJson';
 import { PROXY_BASE_URL } from './proxyBaseUrl';
 
 export type HidroEndpointKey =
@@ -211,10 +212,10 @@ export async function queryHidroAna(input: QueryInput): Promise<HidroResponse> {
     headers,
   });
 
-  const data = (await response.json()) as HidroResponse;
+  const data = await readJsonResponse<HidroResponse>(response, 'API hidrologica');
 
   if (!response.ok) {
-    throw new Error(data.message || `Falha na consulta: HTTP ${response.status}`);
+    throw new Error(apiErrorMessage(data, `Falha na consulta: HTTP ${response.status}`));
   }
 
   return data;

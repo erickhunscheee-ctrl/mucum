@@ -1,4 +1,5 @@
 import { DashboardSnapshotMeta } from '../types/dashboard';
+import { apiErrorMessage, readJsonResponse } from './httpJson';
 import { PROXY_BASE_URL } from './proxyBaseUrl';
 
 export type MucumForecastData = {
@@ -45,11 +46,10 @@ const MUCUM_FORECAST_URL = `${PROXY_BASE_URL}/api/mucum/forecast`;
 export async function getMucumForecast(forceRefresh = false) {
   const params = forceRefresh ? '?refresh=true' : '';
   const response = await fetch(`${MUCUM_FORECAST_URL}${params}`);
-  const data = (await response.json()) as MucumForecastData | { message?: string; detail?: string };
+  const data = await readJsonResponse<MucumForecastData | { message?: string; detail?: string }>(response, 'Previsao de chuva');
 
   if (!response.ok) {
-    const errorData = data as { message?: string; detail?: string };
-    throw new Error(errorData.message || errorData.detail || `Falha ao carregar previsao: HTTP ${response.status}`);
+    throw new Error(apiErrorMessage(data, `Falha ao carregar previsao: HTTP ${response.status}`));
   }
 
   return data as MucumForecastData;

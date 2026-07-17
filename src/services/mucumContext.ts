@@ -1,4 +1,5 @@
 import { DashboardSnapshotMeta } from '../types/dashboard';
+import { apiErrorMessage, readJsonResponse } from './httpJson';
 import { PROXY_BASE_URL } from './proxyBaseUrl';
 
 export type MucumStationSummary = {
@@ -47,11 +48,10 @@ const MUCUM_CONTEXT_URL = `${PROXY_BASE_URL}/api/mucum/context`;
 export async function getMucumContext(forceRefresh = false) {
   const params = forceRefresh ? '?refresh=true' : '';
   const response = await fetch(`${MUCUM_CONTEXT_URL}${params}`);
-  const data = (await response.json()) as MucumContext | { message?: string; detail?: string };
+  const data = await readJsonResponse<MucumContext | { message?: string; detail?: string }>(response, 'Contexto de Mucum');
 
   if (!response.ok) {
-    const errorData = data as { message?: string; detail?: string };
-    throw new Error(errorData.message || errorData.detail || `Falha ao carregar contexto de Mucum: HTTP ${response.status}`);
+    throw new Error(apiErrorMessage(data, `Falha ao carregar contexto de Mucum: HTTP ${response.status}`));
   }
 
   return data as MucumContext;

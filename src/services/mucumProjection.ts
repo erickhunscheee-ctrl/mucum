@@ -1,4 +1,5 @@
 import { DashboardSnapshotMeta } from '../types/dashboard';
+import { apiErrorMessage, readJsonResponse } from './httpJson';
 import { PROXY_BASE_URL } from './proxyBaseUrl';
 
 export type ProjectionStatus = 'normal' | 'attention' | 'alert' | 'inundation';
@@ -104,11 +105,10 @@ const MUCUM_PROJECTION_URL = `${PROXY_BASE_URL}/api/mucum/projection`;
 export async function getMucumProjection(forceRefresh = false) {
   const params = forceRefresh ? '?refresh=true' : '';
   const response = await fetch(`${MUCUM_PROJECTION_URL}${params}`);
-  const data = (await response.json()) as MucumProjectionData | { message?: string; detail?: string };
+  const data = await readJsonResponse<MucumProjectionData | { message?: string; detail?: string }>(response, 'Projecao hidrologica');
 
   if (!response.ok) {
-    const errorData = data as { message?: string; detail?: string };
-    throw new Error(errorData.message || errorData.detail || `Falha ao carregar projecao: HTTP ${response.status}`);
+    throw new Error(apiErrorMessage(data, `Falha ao carregar projecao: HTTP ${response.status}`));
   }
 
   return data as MucumProjectionData;

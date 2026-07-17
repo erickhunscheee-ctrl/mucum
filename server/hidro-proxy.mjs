@@ -243,18 +243,27 @@ const server = createServer(async (request, response) => {
     });
 
     const body = await anaResponse.text();
-    const parsedBody = tryParseJson(body);
+    const parsedBody = parseJsonOrNull(body);
     await saveAnaApiResponse({
       endpointKey: getEndpointKey(anaPath),
       requestUrl: targetUrl.toString(),
       requestParams: Object.fromEntries(targetUrl.searchParams.entries()),
       httpStatus: anaResponse.status,
-      payload: parsedBody,
+      payload: parsedBody ?? { raw: summarizeExternalBody(body) },
     });
+
+    if (parsedBody === null) {
+      sendJson(response, anaResponse.ok ? 502 : anaResponse.status, {
+        message: 'A ANA retornou uma resposta nao JSON.',
+        detail: summarizeExternalBody(body),
+        upstreamStatus: anaResponse.status,
+      });
+      return;
+    }
 
     response.writeHead(anaResponse.status, {
       ...corsHeaders,
-      'Content-Type': anaResponse.headers.get('content-type') || 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
     });
     response.end(body);
   } catch (error) {
@@ -1905,6 +1914,22 @@ function tryParseJson(body) {
   } catch {
     return { raw: body };
   }
+}
+
+function parseJsonOrNull(body) {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
+  }
+}
+
+function summarizeExternalBody(body) {
+  return String(body ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240) || 'Resposta vazia.';
 }
 
 async function getEnvToken(forceRefresh = false) {

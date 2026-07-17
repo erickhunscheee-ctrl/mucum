@@ -1,4 +1,5 @@
 import { DashboardSnapshotMeta } from '../types/dashboard';
+import { apiErrorMessage, readJsonResponse } from './httpJson';
 import { PROXY_BASE_URL } from './proxyBaseUrl';
 
 export type MucumCurrentData = {
@@ -135,11 +136,10 @@ export async function getMucumCurrentData(rainWindowHours = 24, forceRefresh = f
     ...(forceRefresh ? { refresh: 'true' } : {}),
   });
   const response = await fetch(`${MUCUM_CURRENT_URL}?${params.toString()}`);
-  const data = (await response.json()) as MucumCurrentData | { message?: string; detail?: string };
+  const data = await readJsonResponse<MucumCurrentData | { message?: string; detail?: string }>(response, 'Dados atuais de Mucum');
 
   if (!response.ok) {
-    const errorData = data as { message?: string; detail?: string };
-    throw new Error(errorData.message || errorData.detail || `Falha ao carregar dados atuais: HTTP ${response.status}`);
+    throw new Error(apiErrorMessage(data, `Falha ao carregar dados atuais: HTTP ${response.status}`));
   }
 
   return data as MucumCurrentData;
