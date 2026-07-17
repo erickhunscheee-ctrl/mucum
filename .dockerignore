@@ -1,0 +1,12 @@
+node_modules
+.expo
+dist
+.git
+.env
+.env.*
+npm-debug.log
+.tmp
+docs
+supabase
+*.md
+compose.yaml

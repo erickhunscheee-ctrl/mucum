@@ -11,7 +11,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#D9EFF8",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -20,6 +20,19 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "node_modules/@expo-google-fonts/source-sans-3/400Regular/SourceSans3_400Regular.ttf",
+            "node_modules/@expo-google-fonts/source-sans-3/500Medium/SourceSans3_500Medium.ttf",
+            "node_modules/@expo-google-fonts/source-sans-3/600SemiBold/SourceSans3_600SemiBold.ttf",
+            "node_modules/@expo-google-fonts/source-sans-3/700Bold/SourceSans3_700Bold.ttf"
+          ]
+        }
+      ]
+    ]
   }
 }

@@ -1,0 +1,164 @@
+{
+  "contributors": [
+    {
+      "key": "carreiro",
+      "name": "Rio Carreiro",
+      "relation": "main_upstream",
+      "influence": "very_high",
+      "priority": 100,
+      "description": "Grande afluente que entra no eixo Antas/Taquari antes de Mucum.",
+      "riverPatterns": ["RIO CARREIRO"],
+      "cities": ["Lagoa Vermelha", "Ibiraiaras", "Caseiros", "David Canabarro", "Ciriaco", "Muliterno", "Vanini", "Serafina Correa", "Nova Bassano", "Dois Lajeados", "Sao Valentim do Sul"]
+    },
+    {
+      "key": "guapore",
+      "name": "Rio Guapore",
+      "relation": "local_critical",
+      "influence": "very_high",
+      "priority": 98,
+      "description": "Contribuicao local critica junto ao sul da area urbana, com potencial de represamento.",
+      "riverPatterns": ["RIO GUAPORE"],
+      "cities": ["Guapore", "Anta Gorda", "Uniao da Serra", "Dois Lajeados", "Vespasiano Correa"]
+    },
+    {
+      "key": "tainhas",
+      "name": "Rio Tainhas",
+      "relation": "tributary_upstream",
+      "influence": "high",
+      "priority": 88,
+      "description": "Tributario de cabeceira do sistema do Rio das Antas.",
+      "riverPatterns": ["RIO TAINHAS"],
+      "cities": ["Cambara do Sul", "Jaquirana", "Sao Francisco de Paula"]
+    },
+    {
+      "key": "prata",
+      "name": "Rio da Prata",
+      "relation": "tributary_upstream",
+      "influence": "high",
+      "priority": 84,
+      "description": "Tributario da margem direita do sistema Antas.",
+      "riverPatterns": ["RIO DA PRATA", "RIO PRATA"],
+      "cities": ["Nova Prata", "Vila Flores", "Veranopolis"]
+    },
+    {
+      "key": "turvo",
+      "name": "Rio Turvo",
+      "relation": "tributary_upstream",
+      "influence": "high",
+      "priority": 82,
+      "description": "Tributario que drena para o Rio das Antas.",
+      "riverPatterns": ["RIO TURVO"],
+      "cities": ["Ibiraiaras", "Nova Prata"]
+    },
+    {
+      "key": "camisas",
+      "name": "Rio Camisas",
+      "relation": "tributary_upstream",
+      "influence": "medium",
+      "priority": 78,
+      "description": "Tributario de cabeceira na porcao leste da bacia.",
+      "riverPatterns": ["RIO CAMISAS"],
+      "cities": ["Cambara do Sul", "Sao Francisco de Paula"]
+    },
+    {
+      "key": "lajeado_grande",
+      "name": "Rio Lajeado Grande",
+      "relation": "tributary_upstream",
+      "influence": "medium",
+      "priority": 76,
+      "description": "Tributario de montante do sistema do Rio das Antas.",
+      "riverPatterns": ["RIO LAJEADO GRANDE", "LAJEADO GRANDE"],
+      "cities": ["Bom Jesus", "Sao Francisco de Paula"]
+    },
+    {
+      "key": "sao_marcos",
+      "name": "Rio Sao Marcos",
+      "relation": "tributary_upstream",
+      "influence": "medium",
+      "priority": 74,
+      "description": "Tributario de montante que integra o sistema Antas.",
+      "riverPatterns": ["RIO SAO MARCOS"],
+      "cities": ["Sao Marcos", "Caxias do Sul"]
+    },
+    {
+      "key": "quebra_dentes",
+      "name": "Rio Quebra-Dentes",
+      "relation": "tributary_upstream",
+      "influence": "medium",
+      "priority": 72,
+      "description": "Tributario de montante da margem direita do sistema Antas.",
+      "riverPatterns": ["RIO QUEBRA-DENTES", "RIO QUEBRA DENTES", "QUEBRA-DENTES", "QUEBRA DENTES"],
+      "cities": ["Bom Jesus", "Vacaria"]
+    },
+    {
+      "key": "local_drainage",
+      "name": "Drenagem local de Mucum",
+      "relation": "local_drainage",
+      "influence": "high",
+      "priority": 90,
+      "description": "Arroios locais relevantes para alagamentos e enxurradas dentro do municipio.",
+      "riverPatterns": ["ARROIO MUCUM", "ARROIO DA BRABA", "ARROIO BRABA"],
+      "cities": ["Mucum"]
+    },
+    {
+      "key": "antas",
+      "name": "Rio das Antas",
+      "relation": "main_upstream",
+      "influence": "very_high",
+      "priority": 100,
+      "description": "Eixo principal de cabeceira que transporta as contribuicoes regionais ate Mucum.",
+      "riverPatterns": ["RIO DAS ANTAS"],
+      "cities": ["Sao Jose dos Ausentes", "Vacaria", "Bom Jesus", "Campestre da Serra", "Monte Alegre dos Campos", "Caxias do Sul", "Antonio Prado", "Ipe", "Nova Padua", "Nova Roma do Sul", "Veranopolis", "Cotipora", "Bento Goncalves", "Santa Tereza"]
+    },
+    {
+      "key": "taquari_mucum",
+      "name": "Rio Taquari em Mucum",
+      "relation": "outlet",
+      "influence": "very_high",
+      "priority": 100,
+      "description": "Ponto de controle e resposta do conjunto de contribuicoes que chega a Mucum.",
+      "riverPatterns": ["RIO TAQUARI"],
+      "cities": ["Mucum"]
+    }
+  ],
+  "priorityGroups": [
+    {
+      "key": "system_antas",
+      "name": "Sistema Antas e cabeceiras",
+      "contributorKeys": ["antas", "tainhas", "camisas", "lajeado_grande", "sao_marcos", "quebra_dentes", "prata", "turvo"],
+      "description": "Maior area formadora da onda de cheia que chega pelo eixo principal.",
+      "priorityLabel": "Influencia principal"
+    },
+    {
+      "key": "system_carreiro",
+      "name": "Bacia do Carreiro",
+      "contributorKeys": ["carreiro"],
+      "description": "Grande contribuinte incorporado ao Taquari antes de Mucum.",
+      "priorityLabel": "Influencia principal"
+    },
+    {
+      "key": "system_guapore",
+      "name": "Bacia do Guapore",
+      "contributorKeys": ["guapore"],
+      "description": "Foz proxima ao sul urbano; monitorar separadamente por efeito local e represamento.",
+      "priorityLabel": "Critica local"
+    }
+  ],
+  "downstreamContext": [
+    {
+      "key": "forqueta",
+      "name": "Rio Forqueta",
+      "description": "Entra no Taquari depois de Mucum; serve como contexto de propagacao a jusante."
+    },
+    {
+      "key": "jacare",
+      "name": "Arroio Jacare",
+      "description": "Contribuicao a jusante associada principalmente ao trecho de Encantado."
+    },
+    {
+      "key": "taquari_mirim",
+      "name": "Rio Taquari-Mirim",
+      "description": "Contribuicao a jusante; nao entra no calculo da agua que chega primeiro a Mucum."
+    }
+  ]
+}

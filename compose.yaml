@@ -1,0 +1,25 @@
+name: hydro-ana
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        EXPO_PUBLIC_PROXY_URL: ""
+        EXPO_PUBLIC_SUPABASE_URL: ${EXPO_PUBLIC_SUPABASE_URL}
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: ${EXPO_PUBLIC_SUPABASE_ANON_KEY}
+    image: hydro-ana:latest
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      ANA_IDENTIFICADOR: ${ANA_IDENTIFICADOR}
+      ANA_SENHA: ${ANA_SENHA}
+      SUPABASE_URL: ${EXPO_PUBLIC_SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+    security_opt:
+      - no-new-privileges:true
