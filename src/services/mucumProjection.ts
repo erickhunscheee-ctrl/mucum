@@ -14,6 +14,9 @@ export type ProjectionTimelinePoint = {
   minimumFlowM3s: number;
   likelyFlowM3s: number;
   maximumFlowM3s: number;
+  minimumLevelDeltaM: number;
+  likelyLevelDeltaM: number;
+  maximumLevelDeltaM: number;
   minimumRainMm: number;
   likelyRainMm: number;
   maximumRainMm: number;

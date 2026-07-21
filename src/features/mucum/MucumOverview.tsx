@@ -392,6 +392,34 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
         <ProjectionLevelChart projection={projection} />
       </ChartPanel>
 
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderCopy}>
+            <Text style={styles.cardTitle}>Subida prevista hora a hora</Text>
+            <Text style={styles.cardSub}>Variacao do nivel provavel em relacao a hora anterior.</Text>
+          </View>
+          <TrendingUp color={colors.mucumBlue} size={19} />
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.hourlyProjectionTable}>
+            <View style={[styles.hourlyProjectionRow, styles.thresholdHeader]}>
+              <Text style={[styles.hourlyProjectionCell, styles.hourlyProjectionHour]}>Hora</Text>
+              <Text style={styles.hourlyProjectionCell}>Nivel provavel</Text>
+              <Text style={styles.hourlyProjectionCell}>Sobe/desce</Text>
+              <Text style={styles.hourlyProjectionCell}>Faixa min-max</Text>
+            </View>
+            {projection.timeline.map((point) => (
+              <View key={point.hour} style={styles.hourlyProjectionRow}>
+                <Text style={[styles.hourlyProjectionCell, styles.hourlyProjectionHour]}>{point.hour === 0 ? 'Agora' : `+${point.hour}h`}</Text>
+                <Text style={styles.hourlyProjectionCell}>{formatNullable(point.likelyLevelM, ' m')}</Text>
+                <Text style={[styles.hourlyProjectionCell, hourlyDeltaStyle(point.likelyLevelDeltaM)]}>{formatHourlyDelta(point.likelyLevelDeltaM)}</Text>
+                <Text style={styles.hourlyProjectionCell}>{point.minimumLevelM} - {point.maximumLevelM} m</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+
       <View style={styles.chartGrid}>
         <ChartPanel title="Chuva acumulada dos cenarios" subtitle={`P10, mediana e P90 de ${projection.drivers.ensembleMembers} membros meteorologicos`} compact>
           <ProjectionRainChart projection={projection} />
@@ -425,6 +453,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
             <View key={point.hour} style={styles.projectionHorizonCell}>
               <Text style={styles.horizonHour}>+{point.hour}h</Text>
               <Text style={styles.horizonLikely}>{formatNullable(point.likelyLevelM, ' m')}</Text>
+              <Text style={[styles.horizonDelta, hourlyDeltaStyle(point.likelyLevelDeltaM)]}>{formatHourlyDelta(point.likelyLevelDeltaM)}</Text>
               <Text style={styles.horizonRange}>{point.minimumLevelM} - {point.maximumLevelM} m</Text>
               <Text style={styles.horizonConfidence}>{point.confidencePct}% confianca</Text>
             </View>
@@ -1213,6 +1242,18 @@ function formatCrossing(value: string | null) {
   return value ? formatForecastTime(value) : '-';
 }
 
+function formatHourlyDelta(value: number | null | undefined) {
+  if (typeof value !== 'number') return '-';
+  if (Math.abs(value) < 0.005) return 'estavel';
+  const prefix = value > 0 ? '+' : '';
+  return `${prefix}${value.toFixed(2)} m/h`;
+}
+
+function hourlyDeltaStyle(value: number | null | undefined) {
+  if (typeof value !== 'number' || Math.abs(value) < 0.005) return styles.deltaStable;
+  return value > 0 ? styles.deltaRising : styles.deltaFalling;
+}
+
 function riverLevelStatus(m: number | null | undefined): AlertLevel {
   if (m === null || m === undefined || !Number.isFinite(m)) return 'normal';
   if (m >= ALERT_PARAMS.level.critical) return 'critical';
@@ -1985,6 +2026,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
   },
+  horizonDelta: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   horizonRange: {
     color: colors.textSecondary,
     fontSize: 14,
@@ -2023,6 +2068,42 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'left',
     fontWeight: '700',
+  },
+  hourlyProjectionTable: {
+    minWidth: 640,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
+  hourlyProjectionRow: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  hourlyProjectionCell: {
+    width: 150,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  hourlyProjectionHour: {
+    width: 92,
+    color: colors.text,
+    textAlign: 'left',
+    fontWeight: '700',
+  },
+  deltaRising: {
+    color: colors.danger,
+  },
+  deltaFalling: {
+    color: colors.safe,
+  },
+  deltaStable: {
+    color: colors.textSecondary,
   },
   methodPanel: {
     borderRadius: 8,

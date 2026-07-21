@@ -165,8 +165,13 @@ export function calculateMucumProjection({
     minimumFlowM3s: round(currentFlowM3s),
     likelyFlowM3s: round(currentFlowM3s),
     maximumFlowM3s: round(currentFlowM3s),
+    minimumLevelDeltaM: 0,
+    likelyLevelDeltaM: 0,
+    maximumLevelDeltaM: 0,
     status: levelStatus(currentLevelM),
   };
+
+  addHourlyLevelDeltas(timeline);
 
   const peaks = {
     minimum: peakScenario(timeline, 'minimumLevelM', 'minimumFlowM3s'),
@@ -601,6 +606,15 @@ function peakScenario(timeline, levelKey, flowKey) {
     status: levelStatus(peak[levelKey]),
     confidencePct: peak.confidencePct,
   };
+}
+
+function addHourlyLevelDeltas(timeline) {
+  timeline.forEach((row, index) => {
+    const previous = timeline[index - 1];
+    row.minimumLevelDeltaM = previous ? round(row.minimumLevelM - previous.minimumLevelM) : 0;
+    row.likelyLevelDeltaM = previous ? round(row.likelyLevelM - previous.likelyLevelM) : 0;
+    row.maximumLevelDeltaM = previous ? round(row.maximumLevelM - previous.maximumLevelM) : 0;
+  });
 }
 
 function firstCrossing(timeline, key, threshold) {

@@ -85,6 +85,11 @@ const result = calculateMucumProjection({
 });
 
 assert.equal(result.timeline.length, 73);
+assert.equal(result.timeline[0].likelyLevelDeltaM, 0);
+assert.equal(
+  result.timeline[1].likelyLevelDeltaM,
+  Number((result.timeline[1].likelyLevelM - result.timeline[0].likelyLevelM).toFixed(2)),
+);
 assert.equal(result.model.officialLeadHours, 6);
 assert.equal(result.thresholdCrossings.map((item) => item.levelM).join(','), '5,9,18');
 assert.ok(result.confidence.shortTermPct > result.confidence.next72hPct);
