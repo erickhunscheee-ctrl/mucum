@@ -27,6 +27,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const MUCUM_PRIMARY_LEVEL_FLOW_CODES = ['86510000'];
 const MUCUM_RAIN_CODES = ['2951070', '2951170'];
 const REGIONAL_LEVEL_FLOW_FALLBACK_CODES = ['86720000'];
+const MAX_RAIN_STATIONS_PER_CITY = 5;
 const MUCUM_CONTRIBUTOR_CATALOG = JSON.parse(
   readFileSync(resolve(process.cwd(), 'shared/mucum-contributors.json'), 'utf8'),
 );
@@ -520,13 +521,18 @@ async function buildMucumContext() {
     }),
   ]);
 
-  const allStations = normalizeItems(inventory.items)
+  const summarizedStations = normalizeItems(inventory.items)
     .filter((station) => String(station.Sub_Bacia_Codigo ?? station.codigosubbacia ?? '') === '86')
-    .map(summarizeStation)
+    .map(summarizeStation);
+  const allStations = attachTelemetryStationCodes(summarizedStations)
     .sort((left, right) => right.priority - left.priority || left.name.localeCompare(right.name));
 
   const telemetryStations = allStations.filter((station) => station.isTelemetry).slice(0, 30);
-  const rainfallStations = allStations.filter((station) => station.isRain).slice(0, 40);
+  const rainfallStations = allStations.filter((station) => (
+    station.isRain
+    && station.operating
+    && isMucumRainContributorStation(station)
+  ));
   const levelStations = allStations.filter((station) => station.isLevel || station.isFlow).slice(0, 30);
 
   cachedMucumContext = {
@@ -1039,7 +1045,12 @@ function telemetryRangeForHours(hours) {
 
 function enrichStationReadings(readings, context) {
   const stationByCode = new Map(
-    context.stations.allRelevant.map((station) => [station.code, station]),
+    [
+      ...context.stations.allRelevant,
+      ...context.stations.rainfall,
+      ...context.stations.level,
+      ...context.stations.telemetry,
+    ].map((station) => [station.code, station]),
   );
 
   return readings.map((reading) => {
@@ -1061,10 +1072,10 @@ function enrichStationReadings(readings, context) {
 async function buildRegionalRainfall(context, telemetryReadings, rainfallWindowHours = 24) {
   const telemetryByStation = groupRainReadingsByStation(telemetryReadings);
   const selectedRainStations = selectRegionalRainStations(context.stations.rainfall);
-  const telemetryRainCodes = selectedRainStations
-    .filter((station) => station.isTelemetry)
-    .map((station) => station.code)
-    .filter(Boolean);
+  const telemetryRainStations = selectedRainStations.filter((station) => station.isTelemetry);
+  const telemetryRainCodes = uniqueStationCodes(
+    telemetryRainStations.map(telemetryQueryCode).filter(Boolean),
+  );
   const missingTelemetryRainCodes = telemetryRainCodes.filter((code) => !telemetryByStation.get(code)?.length);
 
   if (missingTelemetryRainCodes.length) {
@@ -1087,14 +1098,25 @@ async function buildRegionalRainfall(context, telemetryReadings, rainfallWindowH
     }
   }
 
-  const telemetryRain = selectedRainStations
-    .filter((station) => station.isTelemetry)
-    .map((station) => summarizeRegionalRainStation(
-      station,
-      telemetryByStation.get(station.code) ?? [],
-      rainfallWindowHours,
-      'telemetria',
-    ));
+  const telemetryResults = await mapWithConcurrency(
+    telemetryRainStations,
+    5,
+    async (station) => {
+      const batchReadings = aliasTelemetryReadingsForRainStation(
+        station,
+        telemetryByStation.get(telemetryQueryCode(station)) ?? [],
+      );
+      if (batchReadings.length) {
+        return {
+          summary: summarizeRegionalRainStation(station, batchReadings, rainfallWindowHours, 'telemetria'),
+          readings: batchReadings,
+        };
+      }
+
+      return fetchTelemetryRainStation(station, rainfallWindowHours);
+    },
+  );
+  const telemetryRain = telemetryResults.map((result) => result.summary);
   const conventionalStations = selectedRainStations.filter((station) => !station.isTelemetry);
   const conventionalResults = await mapWithConcurrency(
     conventionalStations,
@@ -1103,9 +1125,7 @@ async function buildRegionalRainfall(context, telemetryReadings, rainfallWindowH
   );
   const conventionalRain = conventionalResults.map((result) => result.summary);
   const regionalReadings = mergeStationReadings(
-    selectedRainStations
-      .filter((station) => station.isTelemetry)
-      .flatMap((station) => telemetryByStation.get(station.code) ?? []),
+    telemetryResults.flatMap((result) => result.readings),
     conventionalResults.flatMap((result) => result.readings),
   );
   const stations = [...telemetryRain, ...conventionalRain]
@@ -1148,18 +1168,59 @@ async function buildRegionalRainfall(context, telemetryReadings, rainfallWindowH
 }
 
 function selectRegionalRainStations(stations) {
-  const bestByCity = new Map();
+  const candidatesByCity = new Map();
 
   stations
     .filter((station) => station.operating && station.code && isMucumRainContributorStation(station))
     .forEach((station) => {
       const cityKey = normalizeText(station.city || station.name || station.code);
-      if (!bestByCity.has(cityKey)) {
-        bestByCity.set(cityKey, station);
+      const cityCandidates = candidatesByCity.get(cityKey) ?? [];
+      cityCandidates.push(station);
+      candidatesByCity.set(cityKey, cityCandidates);
+    });
+
+  return Array.from(candidatesByCity.values()).flatMap(selectRainStationCandidatesForCity);
+}
+
+function selectRainStationCandidatesForCity(stations) {
+  const ordered = stations
+    .slice()
+    .sort((left, right) => right.priority - left.priority || left.name.localeCompare(right.name));
+  const telemetry = ordered.filter((station) => station.isTelemetry);
+  const conventional = ordered.filter((station) => !station.isTelemetry);
+  const selected = [];
+
+  if (telemetry[0]) selected.push(telemetry[0]);
+  if (conventional[0]) selected.push(conventional[0]);
+
+  [...telemetry.slice(1), ...conventional.slice(1)]
+    .sort((left, right) => right.priority - left.priority || left.name.localeCompare(right.name))
+    .forEach((station) => {
+      if (selected.length < MAX_RAIN_STATIONS_PER_CITY && !selected.some((candidate) => candidate.code === station.code)) {
+        selected.push(station);
       }
     });
 
-  return Array.from(bestByCity.values());
+  return selected;
+}
+
+function telemetryQueryCode(station) {
+  return station.telemetryCode || station.code;
+}
+
+function aliasTelemetryReadingsForRainStation(station, readings) {
+  return readings.map((reading) => ({
+    ...reading,
+    stationCode: station.code,
+    stationName: station.name,
+    city: station.city,
+    river: station.river,
+    raw: {
+      ...reading.raw,
+      Codigo_Estacao_Telemetrica_Origem: reading.stationCode,
+      Codigo_Estacao_Pluviometrica: station.code,
+    },
+  }));
 }
 
 function selectUpstreamRiverStations(stations) {
@@ -1256,6 +1317,37 @@ function summarizeRegionalRainStation(station, readings, rainfallWindowHours, so
     rainfallWindowHours,
     daily,
   );
+}
+
+async function fetchTelemetryRainStation(station, rainfallWindowHours = 24) {
+  try {
+    const payload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1', {
+      'Código da Estação': station.code,
+      'Tipo Filtro Data': 'DATA_LEITURA',
+      'Data de Busca (yyyy-MM-dd)': formatDate(new Date()),
+      'Range Intervalo de busca': telemetryRangeForHours(rainfallWindowHours),
+    });
+    const rows = normalizeItems(payload.items);
+    const readings = aliasTelemetryReadingsForRainStation(station, summarizeTelemetryRows(rows));
+
+    return {
+      summary: summarizeRegionalRainStation(station, readings, rainfallWindowHours, 'telemetria'),
+      readings,
+    };
+  } catch (error) {
+    return {
+      summary: summarizeRainStation(
+        station,
+        null,
+        'telemetria',
+        0,
+        error instanceof Error ? error.message : String(error),
+        rainfallWindowHours,
+        [],
+      ),
+      readings: [],
+    };
+  }
 }
 
 async function fetchConventionalRainStation(station, rainfallWindowHours = 24) {
@@ -1806,6 +1898,31 @@ function summarizeStation(station) {
     priority,
     raw: station,
   };
+}
+
+function attachTelemetryStationCodes(stations) {
+  const telemetryByLocation = new Map();
+
+  stations
+    .filter((station) => station.isTelemetry && (station.isLevel || station.isFlow))
+    .sort((left, right) => right.priority - left.priority)
+    .forEach((station) => {
+      const locationKey = stationLocationKey(station);
+      if (!telemetryByLocation.has(locationKey)) {
+        telemetryByLocation.set(locationKey, station.code);
+      }
+    });
+
+  return stations.map((station) => ({
+    ...station,
+    telemetryCode: station.isRain
+      ? telemetryByLocation.get(stationLocationKey(station)) ?? station.code
+      : station.code,
+  }));
+}
+
+function stationLocationKey(station) {
+  return `${normalizeText(station.city)}|${normalizeText(station.name)}|${station.latitude ?? ''}|${station.longitude ?? ''}`;
 }
 
 function isMucumUpstreamLocation(city, river) {

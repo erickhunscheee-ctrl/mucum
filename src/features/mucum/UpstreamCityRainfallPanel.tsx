@@ -23,6 +23,7 @@ type CityRainfallRow = {
   rainfallMm: number | null;
   maxDailyMm: number | null;
   peakDate: string | null;
+  stationCount: number;
   stationName: string | null;
   measuredAt: string | null;
 };
@@ -195,7 +196,9 @@ function CityRainfallTableRow({
           <RadioTower color={colors.textSecondary} size={15} />
           <Text style={styles.stationName} numberOfLines={2}>{row.stationName ?? 'Sem estacao com dado'}</Text>
         </View>
-        <Text style={styles.metricDetail}>{formatMeasuredAt(row.measuredAt) || 'Nao atualizada no periodo'}</Text>
+        <Text style={styles.metricDetail}>
+          {stationCoverageLabel(row.stationCount, row.measuredAt)}
+        </Text>
       </View>
     </View>
   );
@@ -237,6 +240,7 @@ function buildCityRows(current: MucumCurrentData | null) {
       rainfallMm: reading.rainfallMm,
       maxDailyMm: reading.maxDailyMm,
       peakDate: reading.peakDate,
+      stationCount: reading.stationCount,
       stationName: reading.stationName,
       measuredAt: reading.measuredAt,
     });
@@ -261,6 +265,7 @@ function emptyCityRow(city: string, contributor: MucumContributor): CityRainfall
     rainfallMm: null,
     maxDailyMm: null,
     peakDate: null,
+    stationCount: 0,
     stationName: null,
     measuredAt: null,
   };
@@ -283,6 +288,12 @@ function formatPeakDate(value: string | null) {
   const parsed = new Date(`${value}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return ` - ${value}`;
   return ` - ${parsed.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
+}
+
+function stationCoverageLabel(stationCount: number, measuredAt: string | null) {
+  const stationLabel = stationCount === 1 ? '1 estacao consultada' : `${stationCount} estacoes consultadas`;
+  const updatedAt = formatMeasuredAt(measuredAt);
+  return updatedAt ? `${stationLabel} - ${updatedAt}` : `${stationLabel} - nenhuma atualizou`;
 }
 
 const styles = StyleSheet.create({
