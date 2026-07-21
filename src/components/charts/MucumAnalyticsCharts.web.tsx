@@ -16,6 +16,7 @@ import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native'
 import { AppText as Text } from '../ui/AppText';
 import { MucumCurrentData } from '../../services/mucumCurrent';
 import { MucumForecastData } from '../../services/mucumForecast';
+import { HistoricalFloodEvent, MucumHistoricalFloodsData } from '../../services/mucumHistoricalFloods';
 import { MucumProjectionData } from '../../services/mucumProjection';
 import { formatChartTime } from '../../utils/format';
 import { chartColors, colors, riverChartColors } from '../../theme/mucumTheme';
@@ -397,6 +398,92 @@ export function ProjectionLevelChart({ projection }: { projection: MucumProjecti
           scales: {
             y: { beginAtZero: true, title: { display: true, text: 'Nivel em Mucum (m)', color: chartColors.level }, grid: { color: chartColors.levelFill } },
             x: { grid: { display: false }, ticks: { color: colors.textSecondary, maxTicksLimit: 12, maxRotation: 0 } },
+          },
+        }}
+      />
+    </ChartBox>
+  );
+}
+
+export function HistoricalFloodRiseChart({ historical }: { historical: MucumHistoricalFloodsData | null }) {
+  const data = useMemo(() => {
+    const hours = Array.from({ length: 37 }, (_, index) => -96 + index * 3);
+    return {
+      labels: hours.map((hour) => hour === 0 ? 'Pico' : `${hour}h`),
+      datasets: (historical?.events ?? []).map((event, index) => {
+        const valuesByHour = new Map(event.points.map((point) => [point.hourFromPeak, point.levelM]));
+        return {
+          label: event.label,
+          data: hours.map((hour) => valuesByHour.get(hour) ?? null),
+          borderColor: riverChartColors[index % riverChartColors.length],
+          borderWidth: index === 2 ? 3 : 2,
+          pointRadius: 0,
+          tension: 0.2,
+          spanGaps: false,
+        };
+      }),
+    };
+  }, [historical]);
+
+  if (!data.datasets.length) return <EmptyChart message="As series historicas ainda nao foram carregadas." />;
+
+  return (
+    <ChartBox>
+      <Line
+        data={data}
+        options={{
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: commonPlugins,
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Cota telemetrica ANA (m)', color: chartColors.level }, grid: { color: chartColors.levelFill } },
+            x: { title: { display: true, text: 'Horas antes/depois do pico observado' }, grid: { display: false }, ticks: { color: colors.textSecondary, maxTicksLimit: 12, maxRotation: 0 } },
+          },
+        }}
+      />
+    </ChartBox>
+  );
+}
+
+export function HistoricalDamFlowChart({ event }: { event: HistoricalFloodEvent | null }) {
+  const data = useMemo(() => {
+    const hours = Array.from({ length: 37 }, (_, index) => -96 + index * 3);
+    const damColors = [colors.mucumBlue, colors.warning, colors.valleyGreen];
+    return {
+      labels: hours.map((hour) => hour === 0 ? 'Pico em Mucum' : `${hour}h`),
+      datasets: (event?.damFlows ?? [])
+        .filter((series) => series.points.length)
+        .map((series, index) => {
+          const valuesByHour = new Map(series.points.map((point) => [point.hourFromFloodPeak, point.flowM3s]));
+          return {
+            label: `${series.damName} - ${series.signal}`,
+            data: hours.map((hour) => valuesByHour.get(hour) ?? null),
+            borderColor: damColors[Math.floor(index / 2) % damColors.length],
+            borderDash: series.signal.startsWith('Defluencia') ? [5, 4] : undefined,
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.15,
+            spanGaps: false,
+          };
+        }),
+    };
+  }, [event]);
+
+  if (!data.datasets.length) return <EmptyChart message="Nao ha vazoes historicas disponiveis para este evento." />;
+
+  return (
+    <ChartBox>
+      <Line
+        data={data}
+        options={{
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: commonPlugins,
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Vazao telemetrica (m3/s)', color: chartColors.flow }, grid: { color: chartColors.flowFill } },
+            x: { title: { display: true, text: 'Horas em relacao ao pico observado em Mucum' }, grid: { display: false }, ticks: { color: colors.textSecondary, maxTicksLimit: 12, maxRotation: 0 } },
           },
         }}
       />

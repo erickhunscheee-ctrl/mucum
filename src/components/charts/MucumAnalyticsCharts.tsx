@@ -3,6 +3,7 @@ import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { AppText as Text } from '../ui/AppText';
 import { MucumCurrentData } from '../../services/mucumCurrent';
 import { MucumForecastData } from '../../services/mucumForecast';
+import { HistoricalFloodEvent, MucumHistoricalFloodsData } from '../../services/mucumHistoricalFloods';
 import { MucumProjectionData } from '../../services/mucumProjection';
 import { colors } from '../../theme/mucumTheme';
 
@@ -40,6 +41,14 @@ export function ProjectionLevelChart({ projection }: { projection: MucumProjecti
 
 export function ProjectionRainChart({ projection }: { projection: MucumProjectionData | null }) {
   return <ChartFallback count={projection?.timeline.length ?? 0} />;
+}
+
+export function HistoricalFloodRiseChart({ historical }: { historical: MucumHistoricalFloodsData | null }) {
+  return <ChartFallback count={historical?.events.length ?? 0} />;
+}
+
+export function HistoricalDamFlowChart({ event }: { event: HistoricalFloodEvent | null }) {
+  return <ChartFallback count={event?.damFlows.length ?? 0} />;
 }
 
 function ChartFallback({ count }: { count: number }) {

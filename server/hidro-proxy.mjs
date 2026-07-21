@@ -18,6 +18,7 @@ const MUCUM_CONTEXT_PATH = '/api/mucum/context';
 const MUCUM_CURRENT_PATH = '/api/mucum/current';
 const MUCUM_FORECAST_PATH = '/api/mucum/forecast';
 const MUCUM_PROJECTION_PATH = '/api/mucum/projection';
+const MUCUM_HISTORICAL_FLOODS_PATH = '/api/mucum/historical-floods';
 const DASHBOARD_SCOPE = 'mucum';
 const STATIC_ROOT = resolve(process.cwd(), 'dist');
 const DASHBOARD_SNAPSHOT_TTLS = {
@@ -95,6 +96,20 @@ const DAM_TELEMETRY_CONFIGS = [
     stationCodes: ['86451000', '86470800', '86470900', '86471000'],
   },
 ];
+const HISTORICAL_FLOOD_WINDOWS = [
+  { key: 'sep-2023', label: 'Setembro de 2023', searchDate: '2023-09-08', planPeakLevelM: 26.11 },
+  { key: 'nov-2023', label: 'Novembro de 2023', searchDate: '2023-11-20', planPeakLevelM: 23.20 },
+  { key: 'may-2024', label: 'Maio de 2024', searchDate: '2024-05-03', planPeakLevelM: 26.10 },
+  { key: 'may-2024-repeak', label: 'Repiquete de maio de 2024', searchDate: '2024-05-14', planPeakLevelM: 20.80 },
+];
+const HISTORICAL_DAM_FLOW_STATIONS = [
+  { stationCode: '86298000', damName: 'UHE Castro Alves', signal: 'Afluencia associada' },
+  { stationCode: '86306000', damName: 'UHE Castro Alves', signal: 'Defluencia associada' },
+  { stationCode: '86448000', damName: 'UHE Monte Claro', signal: 'Afluencia associada' },
+  { stationCode: '86450500', damName: 'UHE Monte Claro', signal: 'Defluencia associada' },
+  { stationCode: '86451000', damName: 'UHE 14 de Julho', signal: 'Afluencia associada' },
+  { stationCode: '86471000', damName: 'UHE 14 de Julho', signal: 'Defluencia associada' },
+];
 
 let cachedToken = null;
 let tokenRequestPromise = null;
@@ -102,6 +117,8 @@ let cachedMucumContext = null;
 let cachedMucumContextAt = 0;
 let dashboardSnapshotStorageAvailable = true;
 let projectionRunStorageAvailable = true;
+let cachedHistoricalFloods = null;
+let cachedHistoricalFloodsAt = 0;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -228,6 +245,19 @@ const server = createServer(async (request, response) => {
     } catch (error) {
       sendJson(response, 502, {
         message: 'Falha ao calcular a projecao hidrologica de Mucum.',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+
+  if (incomingUrl.pathname === MUCUM_HISTORICAL_FLOODS_PATH) {
+    try {
+      const historicalFloods = await buildMucumHistoricalFloods();
+      sendJson(response, 200, historicalFloods);
+    } catch (error) {
+      sendJson(response, 502, {
+        message: 'Falha ao carregar as curvas historicas de Mucum.',
         detail: error instanceof Error ? error.message : String(error),
       });
     }
@@ -763,6 +793,102 @@ async function fetchGlofasProjection() {
   }
 
   return { ...payload, sourceUrl: url.toString() };
+}
+
+async function buildMucumHistoricalFloods() {
+  const now = Date.now();
+  if (cachedHistoricalFloods && now - cachedHistoricalFloodsAt < 24 * 60 * 60 * 1000) {
+    return cachedHistoricalFloods;
+  }
+
+  const events = await Promise.all(HISTORICAL_FLOOD_WINDOWS.map(async (event) => {
+    const payload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
+      Codigos_Estacoes: ['86510000', ...HISTORICAL_DAM_FLOW_STATIONS.map((station) => station.stationCode)].join(','),
+      'Tipo Filtro Data': 'DATA_LEITURA',
+      'Data de Busca (yyyy-MM-dd)': event.searchDate,
+      'Range Intervalo de busca': 'DIAS_7',
+    });
+    const rawItems = normalizeItems(payload.items);
+    const readings = rawItems
+      .filter((item) => String(item.codigoestacao) === '86510000')
+      .map((item) => ({
+        time: normalizeAnaTimestamp(item.Data_Hora_Medicao),
+        levelM: roundNumber(Number(item.Cota_Adotada) / 100),
+      }))
+      .filter((item) => item.time && Number.isFinite(item.levelM) && item.levelM > 0)
+      .sort((left, right) => new Date(left.time).getTime() - new Date(right.time).getTime());
+    const peak = readings.reduce((highest, reading) => reading.levelM > highest.levelM ? reading : highest, readings[0]);
+    const peakTime = new Date(peak.time).getTime();
+    const hourlyByOffset = new Map();
+
+    readings.forEach((reading) => {
+      const rawOffset = (new Date(reading.time).getTime() - peakTime) / (60 * 60 * 1000);
+      const hourFromPeak = Math.round(rawOffset);
+      if (hourFromPeak < -96 || hourFromPeak > 12) return;
+      const existing = hourlyByOffset.get(hourFromPeak);
+      if (!existing || Math.abs(rawOffset - hourFromPeak) < existing.distance) {
+        hourlyByOffset.set(hourFromPeak, { hourFromPeak, time: reading.time, levelM: reading.levelM, distance: Math.abs(rawOffset - hourFromPeak) });
+      }
+    });
+
+    const damFlows = HISTORICAL_DAM_FLOW_STATIONS.map((station) => {
+      const flowReadings = rawItems
+        .filter((item) => String(item.codigoestacao) === station.stationCode)
+        .filter((item) => item.Vazao_Adotada !== null && item.Vazao_Adotada !== undefined && item.Vazao_Adotada !== '')
+        .map((item) => ({
+          time: normalizeAnaTimestamp(item.Data_Hora_Medicao),
+          flowM3s: roundNumber(Number(item.Vazao_Adotada)),
+        }))
+        .filter((item) => item.time && Number.isFinite(item.flowM3s) && item.flowM3s >= 0)
+        .sort((left, right) => new Date(left.time).getTime() - new Date(right.time).getTime());
+      const maximum = flowReadings.length
+        ? flowReadings.reduce((highest, reading) => reading.flowM3s > highest.flowM3s ? reading : highest, flowReadings[0])
+        : null;
+      const hourlyFlows = new Map();
+      flowReadings.forEach((reading) => {
+        const rawOffset = (new Date(reading.time).getTime() - peakTime) / (60 * 60 * 1000);
+        const hourFromFloodPeak = Math.round(rawOffset);
+        if (hourFromFloodPeak < -96 || hourFromFloodPeak > 12) return;
+        const existing = hourlyFlows.get(hourFromFloodPeak);
+        if (!existing || Math.abs(rawOffset - hourFromFloodPeak) < existing.distance) {
+          hourlyFlows.set(hourFromFloodPeak, { hourFromFloodPeak, time: reading.time, flowM3s: reading.flowM3s, distance: Math.abs(rawOffset - hourFromFloodPeak) });
+        }
+      });
+
+      return {
+        ...station,
+        availableReadings: flowReadings.length,
+        maximumFlowM3s: maximum?.flowM3s ?? null,
+        maximumFlowAt: maximum?.time ?? null,
+        points: [...hourlyFlows.values()]
+          .sort((left, right) => left.hourFromFloodPeak - right.hourFromFloodPeak)
+          .map(({ distance, ...point }) => point),
+      };
+    });
+
+    return {
+      ...event,
+      telemetryPeakLevelM: peak.levelM,
+      telemetryPeakAt: peak.time,
+      peakDifferenceM: roundNumber(peak.levelM - event.planPeakLevelM),
+      points: [...hourlyByOffset.values()]
+        .sort((left, right) => left.hourFromPeak - right.hourFromPeak)
+        .map(({ distance, ...point }) => point),
+      damFlows,
+    };
+  }));
+
+  cachedHistoricalFloods = {
+    generatedAt: new Date().toISOString(),
+    stationCode: '86510000',
+    stationName: 'Mucum',
+    source: 'ANA HidroWeb - serie telemetrica adotada',
+    alignment: 'Horas relativas ao maior valor telemetrico de cada janela de sete dias.',
+    caveat: 'As cotas da telemetria e do plano podem usar referencias diferentes. Elas sao exibidas separadamente e nao foram ajustadas para coincidir.',
+    events,
+  };
+  cachedHistoricalFloodsAt = now;
+  return cachedHistoricalFloods;
 }
 
 async function saveHydrologicalProjectionRun(projection) {

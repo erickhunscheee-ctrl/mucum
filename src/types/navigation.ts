@@ -2,6 +2,7 @@ export type AdminSection =
   | 'dashboard'
   | 'monitoring'
   | 'projection'
+  | 'historical'
   | 'contingency'
   | 'rainfall'
   | 'rivers'

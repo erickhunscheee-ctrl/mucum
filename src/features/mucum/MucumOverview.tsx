@@ -7,6 +7,7 @@ import {
   Database,
   Droplets,
   Gauge,
+  History,
   RadioTower,
   RefreshCcw,
   TrendingUp,
@@ -16,10 +17,13 @@ import {
 import { HydroComparisonChart } from '../../components/charts/HydroComparisonChart';
 import { AppText as Text } from '../../components/ui/AppText';
 import { ContingencyPlanSection } from '../contingency/ContingencyPlanSection';
+import { historicalFloods } from '../contingency/contingencyData';
 import {
   CityRainfallDetailChart,
   DamsFlowChart,
   ForecastRainChart,
+  HistoricalDamFlowChart,
+  HistoricalFloodRiseChart,
   ProjectionLevelChart,
   ProjectionRainChart,
   RegionalRainfallChart,
@@ -29,6 +33,7 @@ import {
 import { MucumContext, MucumStationSummary } from '../../services/mucumContext';
 import { MucumCurrentData } from '../../services/mucumCurrent';
 import { MucumForecastData } from '../../services/mucumForecast';
+import { getMucumHistoricalFloods, MucumHistoricalFloodsData } from '../../services/mucumHistoricalFloods';
 import { MucumProjectionData, ProjectionSeverity, ProjectionStatus } from '../../services/mucumProjection';
 import { AdminSection, RainfallWindowHours } from '../../types/navigation';
 import { DashboardDataStatus } from '../../types/dashboard';
@@ -106,6 +111,21 @@ export function MucumOverview({
           isLoading={isLoading}
         />
         <ContingencyPlanSection current={current} projection={projection} />
+      </>
+    );
+  }
+
+  if (section === 'historical') {
+    return (
+      <>
+        <SectionHero section={section} onRefresh={onRefresh} />
+        <DataFreshnessBar
+          status={dataStatus}
+          updatedAt={dataUpdatedAt}
+          warning={dataWarning}
+          isLoading={isLoading}
+        />
+        <HistoricalFloodSection projection={projection} />
       </>
     );
   }
@@ -271,6 +291,7 @@ function SectionHero({ section, onRefresh }: { section: AdminSection; onRefresh:
     dashboard: { title: 'Panorama hidrologico de Mucum', text: 'Indicadores essenciais da sub-bacia 86 em uma leitura rapida.' },
     monitoring: { title: 'Monitoramento operacional', text: 'Acompanhe sinais de chuva, nivel, vazao e integracoes em tempo real.' },
     projection: { title: 'Projecao hidrologica', text: 'Cenarios de nivel e vazao para Mucum, com pico, cotas operacionais e confianca por horizonte.' },
+    historical: { title: 'Enchentes antigas de Mucum', text: 'Curvas observadas de nivel e vazao, picos documentados e comparacao com a cheia atual.' },
     contingency: { title: 'Plano de contingencia', text: 'Gatilhos oficiais, acoes minimas, rotas, alojamentos e referencias historicas para apoiar a operacao municipal.' },
     rainfall: { title: 'Chuvas na bacia Taquari-Antas', text: 'Acumulados observados, distribuicao regional e previsao para os proximos dias.' },
     rivers: { title: 'Rios e vazao', text: 'Evolucao do nivel e da vazao nas estacoes que influenciam Mucum.' },
@@ -396,6 +417,32 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
         ))}
       </View>
 
+      <View style={styles.scenarioSummaryGrid}>
+        <ProjectionScenarioSummary
+          label="P10 / minimo"
+          description={projection.scenarios.minimum.description}
+          peak={projection.peaks.minimum}
+          color={colors.valleyGreen}
+        />
+        <ProjectionScenarioSummary
+          label="Mediana / provavel"
+          description={projection.scenarios.likely.description}
+          peak={projection.peaks.likely}
+          color={colors.mucumBlue}
+        />
+        <ProjectionScenarioSummary
+          label="P90 / maximo"
+          description={projection.scenarios.maximum.description}
+          peak={projection.peaks.maximum}
+          color={colors.danger}
+        />
+      </View>
+
+      <View style={styles.verificationNotice}>
+        <Text style={styles.verificationLabel}>Conferencia projetado x observado</Text>
+        <Text style={styles.resultSubtitle}>{projectionVerificationLabel(projection.confidence.verificationStatus)}</Text>
+      </View>
+
       <ChartPanel
         title="Nivel projetado em Mucum"
         subtitle="Faixa minima, provavel e maxima; linhas horizontais representam as cotas oficiais de atencao, alerta e inundacao"
@@ -407,7 +454,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderCopy}>
             <Text style={styles.cardTitle}>Subida prevista hora a hora</Text>
-            <Text style={styles.cardSub}>Variacao do nivel provavel em relacao a hora anterior.</Text>
+            <Text style={styles.cardSub}>Nivel e variacao em relacao a hora anterior para minimo, mediana e maximo.</Text>
           </View>
           <TrendingUp color={colors.mucumBlue} size={19} />
         </View>
@@ -415,16 +462,18 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
           <View style={styles.hourlyProjectionTable}>
             <View style={[styles.hourlyProjectionRow, styles.thresholdHeader]}>
               <Text style={[styles.hourlyProjectionCell, styles.hourlyProjectionHour]}>Hora</Text>
-              <Text style={styles.hourlyProjectionCell}>Nivel provavel</Text>
-              <Text style={styles.hourlyProjectionCell}>Sobe/desce</Text>
-              <Text style={styles.hourlyProjectionCell}>Faixa min-max</Text>
+              <Text style={[styles.hourlyProjectionCell, styles.scenarioMinimumText]}>P10 / minimo</Text>
+              <Text style={[styles.hourlyProjectionCell, styles.scenarioLikelyText]}>Mediana</Text>
+              <Text style={[styles.hourlyProjectionCell, styles.scenarioMaximumText]}>P90 / maximo</Text>
+              <Text style={styles.hourlyProjectionSpread}>Amplitude</Text>
             </View>
             {projection.timeline.map((point) => (
               <View key={point.hour} style={styles.hourlyProjectionRow}>
                 <Text style={[styles.hourlyProjectionCell, styles.hourlyProjectionHour]}>{point.hour === 0 ? 'Agora' : `+${point.hour}h`}</Text>
-                <Text style={styles.hourlyProjectionCell}>{formatNullable(point.likelyLevelM, ' m')}</Text>
-                <Text style={[styles.hourlyProjectionCell, hourlyDeltaStyle(point.likelyLevelDeltaM)]}>{formatHourlyDelta(point.likelyLevelDeltaM)}</Text>
-                <Text style={styles.hourlyProjectionCell}>{point.minimumLevelM} - {point.maximumLevelM} m</Text>
+                <ProjectionScenarioCell levelM={point.minimumLevelM} deltaM={point.minimumLevelDeltaM} />
+                <ProjectionScenarioCell levelM={point.likelyLevelM} deltaM={point.likelyLevelDeltaM} emphasized />
+                <ProjectionScenarioCell levelM={point.maximumLevelM} deltaM={point.maximumLevelDeltaM} />
+                <Text style={styles.hourlyProjectionSpread}>{(point.maximumLevelM - point.minimumLevelM).toFixed(2)} m</Text>
               </View>
             ))}
           </View>
@@ -1250,6 +1299,13 @@ function projectionStatusLabel(status: ProjectionStatus) {
   return 'Abaixo da atencao';
 }
 
+function projectionVerificationLabel(status: string) {
+  if (status === 'sem_historico_de_previsoes_suficiente_para_validacao_operacional') {
+    return 'As rodadas estao sendo armazenadas. Ainda nao ha pares projetado-observado suficientes para calcular erro medio e cobertura da faixa; os picos historicos, sozinhos, nao comprovam o acerto do modelo.';
+  }
+  return status.replaceAll('_', ' ');
+}
+
 function projectionSeverityPalette(severity: ProjectionSeverity) {
   if (severity === 'critical') return { background: colors.dangerSoft, border: colors.danger, text: colors.danger };
   if (severity === 'warning') return { background: colors.warningSoft, border: colors.warning, text: colors.text };
@@ -1261,11 +1317,272 @@ function formatCrossing(value: string | null) {
   return value ? formatForecastTime(value) : '-';
 }
 
+function ProjectionScenarioSummary({
+  label,
+  description,
+  peak,
+  color,
+}: {
+  label: string;
+  description: string;
+  peak: MucumProjectionData['peaks']['likely'];
+  color: string;
+}) {
+  return (
+    <View style={[styles.scenarioSummaryItem, { borderTopColor: color }]}>
+      <Text style={[styles.scenarioSummaryLabel, { color }]}>{label}</Text>
+      <Text style={styles.scenarioSummaryPeak}>{peak.levelM.toFixed(2)} m</Text>
+      <Text style={styles.scenarioSummaryTime}>Pico em +{peak.hour}h - {formatForecastTime(peak.at)}</Text>
+      <Text style={styles.scenarioSummaryDescription}>{description}</Text>
+    </View>
+  );
+}
+
+function ProjectionScenarioCell({ levelM, deltaM, emphasized = false }: { levelM: number; deltaM: number; emphasized?: boolean }) {
+  return (
+    <View style={styles.hourlyProjectionScenarioCell}>
+      <Text style={[styles.hourlyProjectionLevel, emphasized && styles.hourlyProjectionLevelEmphasized]}>{levelM.toFixed(2)} m</Text>
+      <Text style={[styles.hourlyProjectionDelta, hourlyDeltaStyle(deltaM)]}>{formatHourlyDelta(deltaM)}</Text>
+    </View>
+  );
+}
+
+function HistoricalFloodSection({ projection }: { projection: MucumProjectionData | null }) {
+  const likelyPeak = projection?.peaks.likely;
+  const operationalEstimate = projection?.operationalEstimate ?? (likelyPeak ? {
+    levelM: likelyPeak.levelM,
+  } : null);
+
+  return (
+    <HistoricalFloodPerspective
+      currentLevelM={projection?.current.levelM}
+      operationalLevelM={operationalEstimate?.levelM}
+      maximumLevelM={projection?.peaks.maximum.levelM}
+    />
+  );
+}
+
+function HistoricalFloodPerspective({
+  currentLevelM,
+  operationalLevelM,
+  maximumLevelM,
+}: {
+  currentLevelM?: number;
+  operationalLevelM?: number;
+  maximumLevelM?: number;
+}) {
+  const [historicalSeries, setHistoricalSeries] = useState<MucumHistoricalFloodsData | null>(null);
+  const [historicalSeriesError, setHistoricalSeriesError] = useState<string | null>(null);
+  const [isHistoricalSeriesLoading, setIsHistoricalSeriesLoading] = useState(true);
+  const [selectedHistoricalEventKey, setSelectedHistoricalEventKey] = useState('may-2024');
+
+  useEffect(() => {
+    let active = true;
+    getMucumHistoricalFloods()
+      .then((data) => {
+        if (active) setHistoricalSeries(data);
+      })
+      .catch((error) => {
+        if (active) setHistoricalSeriesError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (active) setIsHistoricalSeriesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const hasCurrentComparison = [currentLevelM, operationalLevelM, maximumLevelM]
+    .every((value) => typeof value === 'number' && Number.isFinite(value));
+  const nearest = typeof operationalLevelM === 'number'
+    ? historicalFloods.reduce((closest, event) => (
+      Math.abs(event.levelM - operationalLevelM) < Math.abs(closest.levelM - operationalLevelM)
+        ? event
+        : closest
+    ))
+    : null;
+  const comparisonRows = hasCurrentComparison ? [
+    { key: 'current', label: 'Nivel observado agora', levelM: currentLevelM as number, color: colors.valleyGreen },
+    { key: 'operational', label: 'Estimativa operacional', levelM: operationalLevelM as number, color: colors.mucumBlue },
+    { key: 'maximum', label: 'Cenario maximo', levelM: maximumLevelM as number, color: colors.danger },
+  ] : [];
+  const sortedHistory = [...historicalFloods].sort((a, b) => b.levelM - a.levelM);
+  const selectedHistoricalEvent = historicalSeries?.events.find((event) => event.key === selectedHistoricalEventKey)
+    ?? historicalSeries?.events[0]
+    ?? null;
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderCopy}>
+          <Text style={styles.cardTitle}>Historico das maiores enchentes</Text>
+          <Text style={styles.cardSub}>Nivel em Mucum e vazoes associadas as usinas, com comparacao da cheia atual quando disponivel.</Text>
+        </View>
+        <History color={colors.mucumBlue} size={19} />
+      </View>
+      <View style={styles.historicalPerspectiveBody}>
+        {nearest && typeof operationalLevelM === 'number' ? (
+          <>
+            <View style={styles.historicalNearest}>
+              <Text style={styles.historicalNearestLabel}>Referencia mais proxima da estimativa operacional atual</Text>
+              <Text style={styles.historicalNearestValue}>{nearest.label} - {nearest.levelM.toFixed(2)} m</Text>
+              <Text style={styles.resultSubtitle}>{historicalDifferenceLabel(operationalLevelM, nearest.levelM)}</Text>
+            </View>
+            <View style={styles.historicalComparisonGroup}>
+              {comparisonRows.map((row) => (
+                <HistoricalLevelRow key={row.key} label={row.label} levelM={row.levelM} color={row.color} />
+              ))}
+            </View>
+            <View style={styles.historicalDivider} />
+          </>
+        ) : null}
+        <View>
+          <Text style={styles.historicalGroupTitle}>Como o nivel subiu nas cheias recentes</Text>
+          <Text style={styles.cardSub}>Telemetria ANA alinhada pelo pico de cada evento. Passe o cursor no grafico para consultar hora e cota.</Text>
+        </View>
+        {isHistoricalSeriesLoading ? (
+          <View style={styles.historicalLoadingRow}>
+            <ActivityIndicator color={colors.mucumBlue} />
+            <Text style={styles.resultSubtitle}>Carregando series historicas da ANA...</Text>
+          </View>
+        ) : historicalSeries ? (
+          <>
+            <HistoricalFloodRiseChart historical={historicalSeries} />
+            <View style={styles.historicalTelemetryGrid}>
+              {historicalSeries.events.map((event) => (
+                <View key={event.key} style={styles.historicalTelemetryItem}>
+                  <Text style={styles.historicalLevelLabel}>{event.label}</Text>
+                  <Text style={styles.historicalTelemetryValues}>ANA {event.telemetryPeakLevelM.toFixed(2)} m | plano {event.planPeakLevelM.toFixed(2)} m</Text>
+                  <Text style={styles.historicalLevelDetail}>Diferenca {formatSignedMeters(event.peakDifferenceM)} | pico ANA {formatForecastTime(event.telemetryPeakAt)}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={styles.historicalDivider} />
+            <View>
+              <Text style={styles.historicalGroupTitle}>Vazoes associadas as usinas durante a cheia</Text>
+              <Text style={styles.cardSub}>Selecione o evento. Linhas continuas indicam afluencia associada e tracejadas, defluencia associada.</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.historicalEventSelector}>
+                {historicalSeries.events.map((event) => {
+                  const selected = event.key === selectedHistoricalEvent?.key;
+                  return (
+                    <Pressable
+                      key={event.key}
+                      accessibilityRole="button"
+                      onPress={() => setSelectedHistoricalEventKey(event.key)}
+                      style={({ pressed }) => [
+                        styles.historicalEventOption,
+                        selected && styles.historicalEventOptionSelected,
+                        pressed && styles.controlPressed,
+                      ]}
+                    >
+                      <Text style={[styles.historicalEventOptionText, selected && styles.historicalEventOptionTextSelected]}>{event.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            <HistoricalDamFlowChart event={selectedHistoricalEvent} />
+            <View style={styles.historicalTelemetryGrid}>
+              {(selectedHistoricalEvent?.damFlows ?? []).map((series) => (
+                <View key={series.stationCode} style={styles.historicalDamFlowItem}>
+                  <Text style={styles.historicalLevelLabel}>{series.damName}</Text>
+                  <Text style={styles.historicalTelemetryValues}>{series.signal}</Text>
+                  <Text style={styles.historicalLevelDetail}>
+                    {series.maximumFlowM3s === null
+                      ? 'Sem vazao valida nesta janela'
+                      : `Maximo ${series.maximumFlowM3s.toFixed(1)} m3/s em ${formatForecastTime(series.maximumFlowAt)}`}
+                  </Text>
+                  <Text style={styles.historicalStationCode}>Estacao ANA {series.stationCode} | {series.availableReadings} leituras</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.historicalCaveat}>
+              Estes valores sao vazoes adotadas nas estacoes ANA associadas. Podem ser calculados por curva-chave e nao comprovam abertura de comportas nem defluencia oficial; picos extremos e lacunas devem ser confirmados com o operador da usina e boletins oficiais.
+            </Text>
+            <Text style={styles.historicalCaveat}>{historicalSeries.caveat}</Text>
+          </>
+        ) : (
+          <Text style={styles.historicalCaveat}>Serie historica indisponivel: {historicalSeriesError ?? 'sem retorno da ANA'}.</Text>
+        )}
+
+        <View style={styles.historicalDivider} />
+        <Text style={styles.historicalGroupTitle}>Picos historicos do plano complementar</Text>
+        <View style={styles.historicalComparisonGroup}>
+          {sortedHistory.map((event) => (
+            <HistoricalLevelRow
+              key={event.date}
+              label={event.label}
+              levelM={event.levelM}
+              color={colors.institutionalBlue}
+              detail={typeof operationalLevelM === 'number' ? historicalDifferenceShortLabel(operationalLevelM, event.levelM) : undefined}
+            />
+          ))}
+        </View>
+
+        <Text style={styles.historicalCaveat}>
+          Fonte historica: plano complementar, paginas 57 a 60. Antes de calibrar o modelo por esses valores, e necessario confirmar a regua e o datum usados em cada evento.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function HistoricalLevelRow({
+  label,
+  levelM,
+  color,
+  detail,
+}: {
+  label: string;
+  levelM: number;
+  color: string;
+  detail?: string;
+}) {
+  return (
+    <View style={styles.historicalLevelRow}>
+      <View style={styles.historicalLevelHeading}>
+        <Text style={styles.historicalLevelLabel}>{label}</Text>
+        <Text style={styles.historicalLevelValue}>{levelM.toFixed(2)} m</Text>
+      </View>
+      <View style={styles.historicalLevelTrack}>
+        <View
+          style={[
+            styles.historicalLevelFill,
+            { width: `${Math.max(2, Math.min(100, (levelM / 28) * 100))}%`, backgroundColor: color },
+          ]}
+        />
+      </View>
+      {detail ? <Text style={styles.historicalLevelDetail}>{detail}</Text> : null}
+    </View>
+  );
+}
+
 function formatHourlyDelta(value: number | null | undefined) {
   if (typeof value !== 'number') return '-';
   if (Math.abs(value) < 0.005) return 'estavel';
   const prefix = value > 0 ? '+' : '';
   return `${prefix}${value.toFixed(2)} m/h`;
+}
+
+function historicalDifferenceLabel(projectedLevelM: number, historicalLevelM: number) {
+  const differenceM = projectedLevelM - historicalLevelM;
+  if (Math.abs(differenceM) < 0.01) return 'A estimativa desta rodada coincide com essa cota historica.';
+  const position = differenceM > 0 ? 'acima' : 'abaixo';
+  return `A estimativa desta rodada esta ${Math.abs(differenceM).toFixed(2)} m ${position} desse pico historico.`;
+}
+
+function historicalDifferenceShortLabel(projectedLevelM: number, historicalLevelM: number) {
+  const differenceM = projectedLevelM - historicalLevelM;
+  if (Math.abs(differenceM) < 0.01) return 'estimativa na mesma cota';
+  return `estimativa ${Math.abs(differenceM).toFixed(2)} m ${differenceM > 0 ? 'acima' : 'abaixo'}`;
+}
+
+function formatSignedMeters(value: number) {
+  const prefix = value > 0 ? '+' : '';
+  return `${prefix}${value.toFixed(2)} m`;
 }
 
 function hourlyDeltaStyle(value: number | null | undefined) {
@@ -1944,6 +2261,151 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.mucumBlue,
     backgroundColor: colors.blueSoft,
   },
+  historicalPerspectiveBody: {
+    padding: 20,
+    gap: 14,
+  },
+  historicalNearest: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.bridgeGold,
+    backgroundColor: colors.goldSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  historicalNearestLabel: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  historicalNearestValue: {
+    color: colors.institutionalBlue,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  historicalComparisonGroup: {
+    gap: 11,
+  },
+  historicalLoadingRow: {
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  historicalTelemetryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  historicalTelemetryItem: {
+    flex: 1,
+    minWidth: 220,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.mucumBlue,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+  },
+  historicalTelemetryValues: {
+    color: colors.institutionalBlue,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  historicalEventSelector: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingBottom: 2,
+  },
+  historicalEventOption: {
+    minHeight: 38,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    justifyContent: 'center',
+  },
+  historicalEventOptionSelected: {
+    borderColor: colors.mucumBlue,
+    backgroundColor: colors.blueSoft,
+  },
+  historicalEventOptionText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  historicalEventOptionTextSelected: {
+    color: colors.institutionalBlue,
+    fontWeight: '700',
+  },
+  controlPressed: {
+    opacity: 0.72,
+  },
+  historicalDamFlowItem: {
+    flex: 1,
+    minWidth: 220,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+  },
+  historicalStationCode: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginTop: 3,
+  },
+  historicalDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  historicalGroupTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  historicalLevelRow: {
+    gap: 5,
+  },
+  historicalLevelHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  historicalLevelLabel: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  historicalLevelValue: {
+    color: colors.institutionalBlue,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  historicalLevelTrack: {
+    height: 10,
+    borderRadius: 3,
+    backgroundColor: colors.surfaceMuted,
+    overflow: 'hidden',
+  },
+  historicalLevelFill: {
+    height: '100%',
+  },
+  historicalLevelDetail: {
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  historicalCaveat: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 19,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   modelVersion: {
     color: colors.institutionalBlue,
     fontSize: 14,
@@ -1952,6 +2414,58 @@ const styles = StyleSheet.create({
   projectionAlerts: {
     gap: 8,
     marginBottom: 14,
+  },
+  scenarioSummaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 12,
+  },
+  scenarioSummaryItem: {
+    flex: 1,
+    minWidth: 220,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopWidth: 4,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  scenarioSummaryLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  scenarioSummaryPeak: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  scenarioSummaryTime: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  scenarioSummaryDescription: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 18,
+    marginTop: 6,
+  },
+  verificationNotice: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.info,
+    backgroundColor: colors.infoSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 14,
+  },
+  verificationLabel: {
+    color: colors.institutionalBlue,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   projectionAlert: {
     minHeight: 58,
@@ -2097,7 +2611,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   hourlyProjectionTable: {
-    minWidth: 640,
+    minWidth: 790,
     paddingHorizontal: 14,
     paddingBottom: 14,
   },
@@ -2109,7 +2623,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   hourlyProjectionCell: {
-    width: 150,
+    width: 168,
     paddingHorizontal: 8,
     paddingVertical: 8,
     color: colors.textSecondary,
@@ -2122,6 +2636,44 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'left',
     fontWeight: '700',
+  },
+  hourlyProjectionScenarioCell: {
+    width: 168,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+    gap: 1,
+  },
+  hourlyProjectionLevel: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  hourlyProjectionLevelEmphasized: {
+    color: colors.mucumBlue,
+    fontWeight: '700',
+  },
+  hourlyProjectionDelta: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  hourlyProjectionSpread: {
+    width: 120,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  scenarioMinimumText: {
+    color: colors.valleyGreen,
+  },
+  scenarioLikelyText: {
+    color: colors.mucumBlue,
+  },
+  scenarioMaximumText: {
+    color: colors.danger,
   },
   deltaRising: {
     color: colors.danger,

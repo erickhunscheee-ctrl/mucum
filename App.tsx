@@ -21,6 +21,7 @@ import {
   Database,
   Droplets,
   Home,
+  History,
   MapPinned,
   RadioTower,
   RefreshCcw,
@@ -89,6 +90,7 @@ const sectionTitles: Record<AdminSection, string> = {
   dashboard: 'Visao geral',
   monitoring: 'Monitoramento',
   projection: 'Projecao',
+  historical: 'Enchentes antigas',
   contingency: 'Plano de contingencia',
   rainfall: 'Chuvas',
   rivers: 'Rios e vazao',
@@ -352,6 +354,7 @@ export default function App() {
               <SidebarButton icon={TrendingUp} label="Projecao" active={activeSection === 'projection'} onPress={() => navigateSection('projection')} />
               <SidebarButton icon={ClipboardList} label="Plano de contingencia" active={activeSection === 'contingency'} onPress={() => navigateSection('contingency')} />
               {!isNarrow ? <Text style={styles.navSectionLabel}>HIDROLOGIA</Text> : null}
+              <SidebarButton icon={History} label="Enchentes antigas" active={activeSection === 'historical'} onPress={() => navigateSection('historical')} />
               <SidebarButton icon={CloudRain} label="Chuvas" active={activeSection === 'rainfall'} onPress={() => navigateSection('rainfall')} />
               <SidebarButton icon={Waves} label="Rios e vazao" active={activeSection === 'rivers'} onPress={() => navigateSection('rivers')} />
               <SidebarButton icon={Database} label="Barragens" active={activeSection === 'dams'} onPress={() => navigateSection('dams')} />
@@ -573,7 +576,7 @@ export default function App() {
           {/* RIGHT PANE */}
           <View style={[styles.rightPane, isNarrow ? styles.paneNarrow : null]}>
             <SectionTitle
-              icon={activeSection === 'rainfall' ? CloudRain : activeSection === 'rivers' ? Waves : activeSection === 'projection' ? TrendingUp : activeSection === 'stations' ? RadioTower : BarChart3}
+              icon={activeSection === 'rainfall' ? CloudRain : activeSection === 'rivers' ? Waves : activeSection === 'projection' ? TrendingUp : activeSection === 'historical' ? History : activeSection === 'stations' ? RadioTower : BarChart3}
               label={activeSection === 'ana' ? 'Resultados' : sectionTitles[activeSection]}
             />
             {error ? (
