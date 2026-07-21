@@ -93,6 +93,10 @@ assert.equal(
 assert.equal(result.model.officialLeadHours, 6);
 assert.equal(result.thresholdCrossings.map((item) => item.levelM).join(','), '5,9,18');
 assert.ok(result.confidence.shortTermPct > result.confidence.next72hPct);
+assert.equal(result.operationalEstimate.levelM, result.peaks.likely.levelM);
+assert.equal(result.operationalGuidance.evacuationSafetyMarginM, 3);
+assert.deepEqual(result.operationalGuidance.territorialEvacuationLevelsM, [16, 18, 20, 22]);
+assert.equal(result.drivers.upstreamSignals.length, 4);
 assert.ok(result.drivers.forecastRain72hMm.minimum <= result.drivers.forecastRain72hMm.likely);
 assert.ok(result.drivers.forecastRain72hMm.likely <= result.drivers.forecastRain72hMm.maximum);
 assert.ok(result.drivers.localCriticalRain72hMm.likely > 0);

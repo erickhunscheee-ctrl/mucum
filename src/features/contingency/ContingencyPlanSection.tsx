@@ -3,8 +3,10 @@ import {
   Building2,
   CircleAlert,
   ClipboardCheck,
+  CloudRain,
   History,
   MapPin,
+  RadioTower,
   Route,
   ShieldCheck,
   Users,
@@ -23,9 +25,11 @@ import {
   historicalFloods,
   levelReferences,
   meetingPoints,
+  municipalMonitoringAssets,
   riskTerritories,
   stageForLevel,
   sumCapacity,
+  territorialEvacuation,
   ContingencyStage,
 } from './contingencyData';
 
@@ -44,13 +48,15 @@ export function ContingencyPlanSection({ current, projection }: Props) {
   const likelyStage = stageForLevel(likelyPeak);
   const maximumStage = stageForLevel(maximumPeak);
   const exposedPeople = riskTerritories.reduce((total, territory) => total + territory.people, 0);
+  const observedCadence = projection?.operationalGuidance?.observedMonitoringCadenceMinutes ?? null;
+  const projectedCadence = projection?.operationalGuidance?.projectedMonitoringCadenceMinutes ?? null;
 
   return (
     <View style={styles.root}>
       <View style={styles.notice}>
         <ClipboardCheck color={colors.institutionalBlue} size={20} />
         <View style={styles.noticeCopy}>
-          <Text style={styles.noticeTitle}>Base operacional municipal de {contingencyPlan.version}</Text>
+          <Text style={styles.noticeTitle}>Base operacional municipal - {contingencyPlan.version}</Text>
           <Text style={styles.bodyText}>
             Estagio atual usa nivel observado. Projecoes sao apoio a decisao e nao acionam evacuacao automaticamente.
           </Text>
@@ -108,7 +114,7 @@ export function ContingencyPlanSection({ current, projection }: Props) {
           <History color={colors.valleyGreen} size={19} />
           <View>
             <Text style={styles.panelTitle}>Cheias historicas como referencia</Text>
-            <Text style={styles.panelSubtitle}>Cotas transcritas das fichas territoriais do plano, paginas 57 a 60</Text>
+            <Text style={styles.panelSubtitle}>Referencia historica preservada do plano complementar, paginas 57 a 60</Text>
           </View>
         </View>
         <View style={styles.historyList}>
@@ -134,17 +140,17 @@ export function ContingencyPlanSection({ current, projection }: Props) {
             </View>
           </View>
           {contingencyRoutes.map((route) => {
-            const unavailable = likelyPeak !== null && likelyPeak >= route.unavailableAtM;
+            const unavailable = route.unavailableAtM !== null && likelyPeak !== null && likelyPeak >= route.unavailableAtM;
             return (
               <View key={route.name} style={styles.listRow}>
                 <View style={styles.listCopy}>
                   <Text style={styles.listTitle}>{route.name}</Text>
-                  <Text style={styles.listMeta}>{route.access} · {route.distanceM} m · {route.estimatedMinutes} min</Text>
+                  <Text style={styles.listMeta}>{route.access} | {route.distanceM} m | {route.estimatedMinutes} min</Text>
                   <Text style={styles.listMeta}>{route.originDestination}</Text>
                 </View>
                 <View style={[styles.statusBadge, unavailable ? styles.statusDanger : styles.statusSafe]}>
                   <Text style={[styles.statusText, { color: unavailable ? colors.danger : colors.safe }]}>
-                    {unavailable ? 'Indisponivel' : `Ate ${route.unavailableAtM} m`}
+                    {unavailable ? 'Indisponivel' : route.unavailableAtM === null ? 'Fora da mancha' : `Ate ${route.unavailableAtM} m`}
                   </Text>
                 </View>
               </View>
@@ -160,8 +166,8 @@ export function ContingencyPlanSection({ current, projection }: Props) {
               <Text style={styles.panelSubtitle}>Abrigos sao ultimo recurso conforme o plano</Text>
             </View>
           </View>
-          <CapacityRow icon={Building2} label="Alojamentos temporarios" value={sumCapacity(contingencyShelters)} detail={`${contingencyShelters.length} locais`} />
-          <CapacityRow icon={MapPin} label="Pontos de encontro" value={sumCapacity(meetingPoints)} detail={`${meetingPoints.length} locais`} />
+          <CapacityRow icon={Building2} label="Alojamentos listados" value={sumCapacity(contingencyShelters)} detail={`${contingencyShelters.length} locais na tabela detalhada`} />
+          <CapacityRow icon={MapPin} label="Pontos de encontro dedicados" value={sumCapacity(meetingPoints)} detail={`${meetingPoints.length} locais; alojamentos tambem podem receber evacuados`} />
           <CapacityRow icon={Users} label="Pessoas nas areas mapeadas" value={exposedPeople} detail="Contagem agregada; sem dados pessoais" />
           <View style={styles.divider} />
           {riskTerritories.map((territory) => (
@@ -176,6 +182,46 @@ export function ContingencyPlanSection({ current, projection }: Props) {
         </View>
       </View>
 
+      <View style={[styles.twoColumns, compact && styles.singleColumn]}>
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <RadioTower color={colors.mucumBlue} size={19} />
+            <View>
+              <Text style={styles.panelTitle}>Cadencia de monitoramento</Text>
+              <Text style={styles.panelSubtitle}>Plano final, pagina 56</Text>
+            </View>
+          </View>
+          <CapacityRow icon={RadioTower} label="Condicao observada" value={observedCadence ? `${observedCadence} min` : 'Rotina'} detail={observedCadence ? 'Intervalo maximo indicado no plano' : 'Abaixo de 9 m'} />
+          <CapacityRow icon={RadioTower} label="Planejamento pelo pico provavel" value={projectedCadence ? `${projectedCadence} min` : 'Rotina'} detail={projectedCadence ? 'Preparar intensificacao do acompanhamento' : 'Sem intensificacao projetada'} />
+          <CapacityRow icon={CloudRain} label="Pluviometros municipais" value={municipalMonitoringAssets.localRainGauges.length} detail={municipalMonitoringAssets.localRainGauges.map((gauge) => gauge.name).join(', ')} />
+          <Text style={styles.validationNote}>O plano informa 5 equipamentos de nivel nos rios Taquari e Guapore e camera na {municipalMonitoringAssets.riverCamera}. A integracao digital desses sensores ainda precisa de acesso da Prefeitura.</Text>
+        </View>
+
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <Route color={colors.warning} size={19} />
+            <View>
+              <Text style={styles.panelTitle}>Evacuacao territorial antecipada</Text>
+              <Text style={styles.panelSubtitle}>Faixas do plano com margem operacional de 3 m</Text>
+            </View>
+          </View>
+          {territorialEvacuation.map((band) => (
+            <View key={band.levelM} style={styles.evacuationRow}>
+              <View style={styles.evacuationLevel}>
+                <Text style={styles.evacuationLevelValue}>{band.levelM} m</Text>
+                <Text style={styles.evacuationTrigger}>planejar em {band.planningTriggerM} m</Text>
+              </View>
+              <View style={styles.listCopy}>
+                <Text style={styles.listMeta}>Centro: {band.central}</Text>
+                <Text style={styles.listMeta}>Guapore: {band.guapore}</Text>
+                <Text style={styles.listMeta}>Fatima: {band.fatima}</Text>
+              </View>
+            </View>
+          ))}
+          <Text style={styles.validationNote}>Referencia de planejamento. A ordem de evacuacao continua sendo decisao da Defesa Civil com verificacao em campo.</Text>
+        </View>
+      </View>
+
       <View style={styles.referencePanel}>
         <Text style={styles.panelTitle}>Referencias de cota nao devem ser misturadas</Text>
         <View style={[styles.referenceGrid, compact && styles.singleColumn]}>
@@ -187,7 +233,7 @@ export function ContingencyPlanSection({ current, projection }: Props) {
           ))}
         </View>
         <Text style={styles.validationNote}>
-          A tabela meteorologica da pagina 22 possui uma lacuna entre 150 e 250 mm/24h; por seguranca, ela nao foi usada para acionamento automatico.
+          O quadro meteorologico da pagina 34 possui uma lacuna entre 150 e 250 mm/24h. A secao de capacidades informa 8 alojamentos e 446 pessoas, mas a tabela detalhada lista 9 locais e 506 pessoas; ambas as divergencias precisam de confirmacao municipal.
         </Text>
       </View>
     </View>
@@ -237,7 +283,7 @@ function ActionGroup({ title, stage, empty }: { title: string; stage: Contingenc
   );
 }
 
-function CapacityRow({ icon: Icon, label, value, detail }: { icon: typeof Building2; label: string; value: number; detail: string }) {
+function CapacityRow({ icon: Icon, label, value, detail }: { icon: typeof Building2; label: string; value: number | string; detail: string }) {
   return (
     <View style={styles.capacityRow}>
       <View style={styles.capacityIcon}><Icon color={colors.mucumBlue} size={17} /></View>
@@ -311,4 +357,8 @@ const styles = StyleSheet.create({
   referenceGrid: { flexDirection: 'row', gap: 10 },
   referenceItem: { flex: 1, minWidth: 0, padding: 10, backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.mucumBlue },
   validationNote: { color: colors.warning, fontSize: 14, fontWeight: '600', lineHeight: 19 },
+  evacuationRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  evacuationLevel: { width: 104, padding: 8, backgroundColor: colors.warningSoft, borderLeftWidth: 3, borderLeftColor: colors.warning },
+  evacuationLevelValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  evacuationTrigger: { color: colors.warning, fontSize: 13, fontWeight: '700' },
 });

@@ -3,16 +3,37 @@ const PROJECTION_HOURS = 72;
 const MUCUM_DRAINAGE_AREA_KM2 = 16000;
 
 export const MUCUM_RAIN_GAUGES = [
-  { key: 'lagoa_vermelha', city: 'Lagoa Vermelha', weight: 0.19 },
-  { key: 'santa_tereza', city: 'Santa Tereza', weight: 0.30 },
+  { key: 'sao_jose_ausentes', city: 'Sao Jose dos Ausentes', weight: 0.05 },
+  { key: 'bom_jesus', city: 'Bom Jesus', weight: 0.05 },
+  { key: 'jaquirana', city: 'Jaquirana', weight: 0.08 },
+  { key: 'cambara_do_sul', city: 'Cambara do Sul', weight: 0.06 },
+  { key: 'sao_francisco_de_paula', city: 'Sao Francisco de Paula', weight: 0.04 },
+  { key: 'vacaria', city: 'Vacaria', weight: 0.08 },
+  { key: 'monte_alegre_dos_campos', city: 'Monte Alegre dos Campos', weight: 0.04 },
+  { key: 'campestre_da_serra', city: 'Campestre da Serra', weight: 0.04 },
   { key: 'caxias_do_sul', city: 'Caxias do Sul', weight: 0.05 },
-  { key: 'jaquirana', city: 'Jaquirana', weight: 0.22 },
-  { key: 'sao_jose_ausentes', city: 'Sao Jose dos Ausentes', weight: 0.07 },
-  { key: 'vacaria', city: 'Vacaria', weight: 0.16 },
+  { key: 'antonio_prado', city: 'Antonio Prado', weight: 0.04 },
+  { key: 'nova_padua', city: 'Nova Padua', weight: 0.03 },
+  { key: 'nova_roma_castro_alves', city: 'Nova Roma do Sul', weight: 0.03 },
+  { key: 'veranopolis', city: 'Veranopolis', weight: 0.05 },
+  { key: 'bento', city: 'Bento Goncalves', weight: 0.03 },
+  { key: 'santa_tereza', city: 'Santa Tereza', weight: 0.04 },
+  { key: 'lagoa_vermelha', city: 'Lagoa Vermelha', weight: 0.05 },
+  { key: 'ibiraiaras', city: 'Ibiraiaras', weight: 0.06 },
+  { key: 'serafina_correa', city: 'Serafina Correa', weight: 0.05 },
+  { key: 'nova_bassano', city: 'Nova Bassano', weight: 0.04 },
+  { key: 'dois_lajeados', city: 'Dois Lajeados', weight: 0.03 },
+  { key: 'sao_valentim_do_sul', city: 'Sao Valentim do Sul', weight: 0.03 },
+  { key: 'nova_prata', city: 'Nova Prata', weight: 0.03 },
 ];
 
 export const MUCUM_LOCAL_CRITICAL_RAIN_GAUGES = [
-  { key: 'marau', city: 'Marau', weight: 1 },
+  { key: 'marau', city: 'Marau', weight: 0.25 },
+  { key: 'guapore', city: 'Guapore', weight: 0.25 },
+  { key: 'anta_gorda', city: 'Anta Gorda', weight: 0.15 },
+  { key: 'uniao_da_serra', city: 'Uniao da Serra', weight: 0.10 },
+  { key: 'vespasiano_correa', city: 'Vespasiano Correa', weight: 0.10 },
+  { key: 'doutor_ricardo', city: 'Doutor Ricardo', weight: 0.15 },
 ];
 
 export const MUCUM_THRESHOLDS_M = {
@@ -71,6 +92,13 @@ export function calculateMucumProjection({
   const dam14July = (current.dams ?? []).find((dam) => normalize(dam.dam_name).includes('14 DE JULHO'));
   const uheReading = latestReading(stationRows(readings, '86471000'));
   const uheOutflowM3s = finiteNumber(dam14July?.outflow_m3s) ?? finiteNumber(uheReading?.flowM3s);
+  const upstreamSignals = [
+    stationSignal(readings, '86160000', 'Passo Tainhas', 'Rio Tainhas'),
+    stationSignal(readings, '86410000', 'Passo Barra do Guaiaveira', 'Rio Turvo'),
+    stationSignal(readings, '86500000', 'Passo Carreiro', 'Rio Carreiro'),
+    stationSignal(readings, '86580000', 'Santa Lucia', 'Rio Guapore'),
+  ];
+  const availableUpstreamSignals = upstreamSignals.filter((signal) => signal.available).length;
   const official = officialShortTermProjection({
     linhaFlowM3s,
     uheOutflowM3s,
@@ -96,7 +124,14 @@ export function calculateMucumProjection({
   };
   const glofasScenarios = normalizeGlofas(glofas, currentFlowM3s);
   const freshnessScore = dataFreshnessScore(baseTime, generatedAt);
-  const hydrologyScore = hydrologyInputScore({ official, currentLevelM, measuredCurrentFlow, linhaFlowM3s, uheOutflowM3s });
+  const hydrologyScore = hydrologyInputScore({
+    official,
+    currentLevelM,
+    measuredCurrentFlow,
+    linhaFlowM3s,
+    uheOutflowM3s,
+    availableUpstreamSignals,
+  });
   const meteorologyScore = rainScenarios.ensembleMembers > 1 ? 92 : forecast ? 58 : 20;
   const coverageScore = Math.round(100 * rainScenarios.coverage);
   const baseConfidence = Math.round(
@@ -178,6 +213,8 @@ export function calculateMucumProjection({
     likely: peakScenario(timeline, 'likelyLevelM', 'likelyFlowM3s'),
     maximum: peakScenario(timeline, 'maximumLevelM', 'maximumFlowM3s'),
   };
+  const operationalPoint = timeline[peaks.likely.hour];
+  const damSignals = planDamSignals(current.dams ?? []);
   const thresholdCrossings = Object.entries(MUCUM_THRESHOLDS_M).map(([key, levelM]) => ({
     key,
     label: thresholdLabel(key),
@@ -186,7 +223,16 @@ export function calculateMucumProjection({
     likelyAt: firstCrossing(timeline, 'likelyLevelM', levelM),
     maximumAt: firstCrossing(timeline, 'maximumLevelM', levelM),
   }));
-  const alerts = buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRain, rainScenarios, official, freshnessScore });
+  const alerts = buildProjectionAlerts({
+    timeline,
+    peaks,
+    thresholdCrossings,
+    observedRain,
+    rainScenarios,
+    official,
+    freshnessScore,
+    damSignals,
+  });
   const shortTermHour = official?.leadHours ?? 6;
 
   return {
@@ -201,7 +247,7 @@ export function calculateMucumProjection({
     },
     model: {
       name: 'Hydro Mucum Hibrido',
-      version: '1.1.1',
+      version: '1.2.0',
       status: official ? 'oficial_curto_prazo_com_cenarios_experimentais' : 'experimental_sem_equacao_oficial_disponivel',
       officialLeadHours: official?.leadHours ?? null,
       officialVariant: official?.variant ?? null,
@@ -217,7 +263,27 @@ export function calculateMucumProjection({
         'A curva-chave e as vazoes de barragens podem mudar; valide versoes e leituras com SGB e operadores.',
         'O GloFAS possui resolucao aproximada de 5 km e entra apenas como sinal independente de baixa ponderacao.',
         'A chuva de Marau/Capingui representa risco local do Guapore e nao e convertida diretamente em nivel de Mucum sem calibracao de remanso.',
+        'Os limiares de vazao das UHEs e a margem de evacuacao do plano municipal sao referencias operacionais e nao ordens automaticas.',
       ],
+    },
+    operationalEstimate: {
+      levelM: operationalPoint.likelyLevelM,
+      lowerLevelM: operationalPoint.minimumLevelM,
+      upperLevelM: operationalPoint.maximumLevelM,
+      at: operationalPoint.time,
+      hour: operationalPoint.hour,
+      confidencePct: operationalPoint.confidencePct,
+      confidenceLabel: operationalPoint.confidenceLabel,
+      basis: official
+        ? 'Equacao SGB no curto prazo, tendencia observada e chuva ensemble ponderada na bacia.'
+        : 'Tendencia observada e chuva ensemble ponderada na bacia; equacao SGB indisponivel nesta rodada.',
+    },
+    operationalGuidance: {
+      observedMonitoringCadenceMinutes: monitoringCadenceMinutes(currentLevelM),
+      projectedMonitoringCadenceMinutes: monitoringCadenceMinutes(peaks.likely.levelM),
+      evacuationSafetyMarginM: 3,
+      territorialEvacuationLevelsM: [16, 18, 20, 22],
+      source: 'Plano de Contingencia de Mucum - versao final de julho de 2026, paginas 33, 44 a 47 e 56.',
     },
     confidence: {
       overallPct: timeline[shortTermHour]?.confidencePct ?? timeline[0].confidencePct,
@@ -261,6 +327,9 @@ export function calculateMucumProjection({
       flowTrendM3sPerHour: round(flowTrendM3sPerHour, 1),
       linhaJoseJulioFlowM3s: round(linhaFlowM3s),
       uhe14JulhoOutflowM3s: round(uheOutflowM3s),
+      upstreamSignals,
+      availableUpstreamSignals,
+      damSignals,
       glofasAvailable: Boolean(glofasScenarios),
     },
     alerts,
@@ -356,9 +425,9 @@ function summarizeEnsemble(ensemble, gauges) {
   )));
 
   return {
-    minimum: Array.from({ length: PROJECTION_HOURS }, (_, hour) => quantile(memberSeries.map((series) => series[hour]), 0.10)),
-    likely: Array.from({ length: PROJECTION_HOURS }, (_, hour) => quantile(memberSeries.map((series) => series[hour]), 0.50)),
-    maximum: Array.from({ length: PROJECTION_HOURS }, (_, hour) => quantile(memberSeries.map((series) => series[hour]), 0.90)),
+    minimum: quantileTrajectory(memberSeries, 0.10),
+    likely: quantileTrajectory(memberSeries, 0.50),
+    maximum: quantileTrajectory(memberSeries, 0.90),
     ensembleMembers: memberSeries.length,
     coverage: totalWeight > 0 ? clamp(availableWeight / totalWeight, 0, 1) : 0,
   };
@@ -519,12 +588,13 @@ function flowTrendFromStage(stageM, stageTrendMPerHour) {
   return current !== null && next !== null ? next - current : 0;
 }
 
-function hydrologyInputScore({ official, currentLevelM, measuredCurrentFlow, linhaFlowM3s, uheOutflowM3s }) {
-  let score = 25;
+function hydrologyInputScore({ official, currentLevelM, measuredCurrentFlow, linhaFlowM3s, uheOutflowM3s, availableUpstreamSignals = 0 }) {
+  let score = 20;
   if (currentLevelM !== null) score += 20;
   if (measuredCurrentFlow !== null) score += 20;
   if (official) score += 25;
-  if (linhaFlowM3s !== null || uheOutflowM3s !== null) score += 10;
+  if (linhaFlowM3s !== null || uheOutflowM3s !== null) score += 5;
+  score += Math.min(10, availableUpstreamSignals * 2.5);
   return clamp(score, 0, 100);
 }
 
@@ -555,7 +625,7 @@ function confidenceLabel(value) {
   return 'baixa';
 }
 
-function buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRain, rainScenarios, official, freshnessScore }) {
+function buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRain, rainScenarios, official, freshnessScore, damSignals = [] }) {
   const alerts = [];
   const inundation = thresholdCrossings.find((item) => item.key === 'inundation');
   const alert = thresholdCrossings.find((item) => item.key === 'alert');
@@ -581,6 +651,17 @@ function buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRa
     alerts.push({ severity: 'warning', title: 'Previsao de 72h supera referencia historica severa', detail: `${round(forecast72hMm)} mm previstos no cenario provavel para as proximas 72 horas. A referencia de 90 mm/3d e historica e nao determina sozinha a cota futura.` });
   } else if (forecast72hMm >= 50) {
     alerts.push({ severity: 'info', title: 'Previsao de 72h em faixa de atencao hidrologica', detail: `${round(forecast72hMm)} mm previstos no cenario provavel para as proximas 72 horas. A referencia historica de 50 mm/3d deve ser analisada junto com nivel, vazao e saturacao do solo.` });
+  }
+
+  const criticalDam = damSignals.find((signal) => signal.status === 'maximum');
+  const veryHighDam = damSignals.find((signal) => signal.status === 'very_high');
+  const highDam = damSignals.find((signal) => signal.status === 'high');
+  if (criticalDam) {
+    alerts.push({ severity: 'critical', title: `Vazao de ${criticalDam.name} na referencia maxima do plano`, detail: `${criticalDam.flowM3s} m3/s observados; confirmar imediatamente com a CERAN e a Defesa Civil.` });
+  } else if (veryHighDam) {
+    alerts.push({ severity: 'warning', title: `Vazao elevada em ${veryHighDam.name}`, detail: `${veryHighDam.flowM3s} m3/s observados, acima da referencia de 5.000 m3/s do plano municipal.` });
+  } else if (highDam) {
+    alerts.push({ severity: 'info', title: `Vazao de ${highDam.name} acima da referencia de acompanhamento`, detail: `${highDam.flowM3s} m3/s observados, acima de 1.000 m3/s. Analisar tendencia e confirmar a leitura com a operadora.` });
   }
 
   if (!official) {
@@ -615,6 +696,52 @@ function addHourlyLevelDeltas(timeline) {
     row.likelyLevelDeltaM = previous ? round(row.likelyLevelM - previous.likelyLevelM) : 0;
     row.maximumLevelDeltaM = previous ? round(row.maximumLevelM - previous.maximumLevelM) : 0;
   });
+}
+
+function stationSignal(readings, stationCode, stationName, river) {
+  const rows = stationRows(readings, stationCode);
+  const latest = latestReading(rows);
+  return {
+    stationCode,
+    stationName,
+    river,
+    levelM: round(latest?.riverLevelM),
+    flowM3s: round(latest?.flowM3s),
+    measuredAt: latest?.measuredAt ?? null,
+    available: Boolean(latest && (finiteNumber(latest.riverLevelM) !== null || finiteNumber(latest.flowM3s) !== null)),
+  };
+}
+
+function planDamSignals(dams) {
+  const references = [
+    { pattern: 'CASTRO ALVES', name: 'UHE Castro Alves', maximumM3s: 8000 },
+    { pattern: 'MONTE CLARO', name: 'UHE Monte Claro', maximumM3s: 10000 },
+    { pattern: '14 DE JULHO', name: 'UHE 14 de Julho', maximumM3s: 15000 },
+  ];
+
+  return references.map((reference) => {
+    const dam = dams.find((item) => normalize(item.dam_name).includes(reference.pattern));
+    const flowM3s = finiteNumber(dam?.outflow_m3s) ?? finiteNumber(dam?.inflow_m3s);
+    let status = 'unavailable';
+    if (flowM3s !== null) {
+      status = flowM3s >= reference.maximumM3s ? 'maximum' : flowM3s >= 5000 ? 'very_high' : flowM3s >= 1000 ? 'high' : 'normal';
+    }
+    return {
+      name: reference.name,
+      flowM3s: round(flowM3s),
+      maximumReferenceM3s: reference.maximumM3s,
+      status,
+      measuredAt: dam?.measured_at ?? null,
+    };
+  });
+}
+
+function monitoringCadenceMinutes(levelM) {
+  const level = finiteNumber(levelM);
+  if (level === null || level < 9) return null;
+  if (level >= 18) return 15;
+  if (level >= 15) return 30;
+  return 60;
 }
 
 function firstCrossing(timeline, key, threshold) {
@@ -686,13 +813,20 @@ function numericArray(value) {
   return Array.isArray(value) ? value.map(finiteNumber).filter((item) => item !== null) : [];
 }
 
-function quantile(values, probability) {
-  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
-  if (!sorted.length) return 0;
-  const position = (sorted.length - 1) * probability;
+function quantileTrajectory(series, probability) {
+  const ordered = series
+    .filter((row) => Array.isArray(row) && row.length)
+    .slice()
+    .sort((left, right) => sum(left) - sum(right));
+  if (!ordered.length) return Array(PROJECTION_HOURS).fill(0);
+
+  const position = (ordered.length - 1) * probability;
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
-  return lerp(sorted[lower], sorted[upper], position - lower);
+  const ratio = position - lower;
+  return Array.from({ length: PROJECTION_HOURS }, (_, hour) => (
+    lerp(ordered[lower][hour] ?? 0, ordered[upper][hour] ?? ordered[lower][hour] ?? 0, ratio)
+  ));
 }
 
 function namesMatch(left, right) {

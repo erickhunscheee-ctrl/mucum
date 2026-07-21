@@ -356,6 +356,16 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
   }
 
   const peak = projection.peaks.likely;
+  const operationalEstimate = projection.operationalEstimate ?? {
+    levelM: peak.levelM,
+    lowerLevelM: projection.peaks.minimum.levelM,
+    upperLevelM: projection.peaks.maximum.levelM,
+    at: peak.at,
+    hour: peak.hour,
+    confidencePct: peak.confidencePct,
+    confidenceLabel: peak.confidencePct >= 75 ? 'alta' : peak.confidencePct >= 50 ? 'media' : 'baixa',
+    basis: 'Cenario provavel da rodada.',
+  };
   const forecastRain = projection.drivers.forecastRain72hMm;
   const marauRain = projection.drivers.localCriticalRain72hMm;
   const confidenceAccent = projection.confidence.overallPct >= 75 ? 'green' : projection.confidence.overallPct >= 50 ? 'amber' : 'red';
@@ -373,7 +383,8 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
 
       <View style={styles.kpiGrid}>
         <KpiCard label="Nivel atual" value={formatNullable(projection.current.levelM, '')} unit="m" icon={Waves} accent={projectionStatusAccent(projection.current.status)} trend={projectionStatusLabel(projection.current.status)} />
-        <KpiCard label="Pico provavel" value={formatNullable(peak.levelM, '')} unit="m" icon={TrendingUp} accent={projectionStatusAccent(peak.status)} trend={`${peak.hour}h - ${formatForecastTime(peak.at)}`} />
+        <KpiCard label="Estimativa operacional" value={formatNullable(operationalEstimate.levelM, '')} unit="m" icon={TrendingUp} accent={projectionStatusAccent(peak.status)} trend={`${operationalEstimate.hour}h - ${formatForecastTime(operationalEstimate.at)}`} />
+        <KpiCard label="Faixa dos cenarios no pico" value={`${operationalEstimate.lowerLevelM} a ${operationalEstimate.upperLevelM}`} unit="m" icon={Gauge} accent={confidenceAccent} trend={`${operationalEstimate.confidencePct}% de confianca`} />
         <KpiCard label="Confianca curto prazo" value={String(projection.confidence.overallPct)} unit="%" icon={Gauge} accent={confidenceAccent} trend={`${projection.model.officialLeadHours ?? 6} horas`} />
         <KpiCard label="Chuva prevista 72h" value={formatNullable(forecastRain.likely, '')} unit="mm" icon={CloudRain} accent="blue" trend={`${forecastRain.minimum} a ${forecastRain.maximum} mm`} />
         <KpiCard label="Marau / Guapore 72h" value={formatNullable(marauRain?.likely, '')} unit="mm" icon={CloudRain} accent="amber" trend={marauRain ? `${marauRain.minimum} a ${marauRain.maximum} mm` : 'sinal local indisponivel'} />
@@ -418,6 +429,13 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
             ))}
           </View>
         </ScrollView>
+      </View>
+
+      <View style={styles.operationalEstimateNote}>
+        <View style={styles.cardHeaderCopy}>
+          <Text style={styles.cardTitle}>Ponto mais provavel desta rodada</Text>
+          <Text style={styles.cardSub}>{operationalEstimate.basis} O valor central e a melhor estimativa disponivel, mas deve ser lido junto da faixa de cenarios {operationalEstimate.lowerLevelM} a {operationalEstimate.upperLevelM} m.</Text>
+        </View>
       </View>
 
       <View style={styles.chartGrid}>
@@ -499,6 +517,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
           <Text style={styles.dataTag}>{projection.drivers.ensembleMembers} membros</Text>
           <Text style={styles.dataTag}>{projection.drivers.basinRainCoveragePct}% da bacia</Text>
           <Text style={styles.dataTag}>Marau/Guapore {projection.drivers.localCriticalRainCoveragePct ?? 0}%</Text>
+          <Text style={styles.dataTag}>{projection.drivers.availableUpstreamSignals ?? 0}/4 sinais de afluentes</Text>
         </View>
       </View>
     </>
@@ -1916,6 +1935,14 @@ const styles = StyleSheet.create({
   projectionNoticeCopy: {
     flex: 1,
     gap: 2,
+  },
+  operationalEstimateNote: {
+    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.mucumBlue,
+    backgroundColor: colors.blueSoft,
   },
   modelVersion: {
     color: colors.institutionalBlue,

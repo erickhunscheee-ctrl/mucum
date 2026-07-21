@@ -50,8 +50,13 @@ const FORECAST_POINTS = [
   { key: 'sao_francisco_de_paula', name: 'Sao Francisco de Paula', role: 'rio_tainhas', contributorKey: 'tainhas', latitude: -29.4481, longitude: -50.5832 },
   { key: 'ibiraiaras', name: 'Ibiraiaras', role: 'rio_carreiro', contributorKey: 'carreiro', latitude: -28.3741, longitude: -51.6377 },
   { key: 'lagoa_vermelha', name: 'Lagoa Vermelha', role: 'rio_carreiro', contributorKey: 'carreiro', latitude: -28.2086, longitude: -51.5250 },
+  { key: 'muitos_capoes', name: 'Muitos Capoes', role: 'rio_turvo', contributorKey: 'turvo', latitude: -28.3134, longitude: -51.1836 },
   { key: 'marau', name: 'Marau', role: 'rio_guapore_local_critical', contributorKey: 'guapore', latitude: -28.4569, longitude: -52.1892 },
   { key: 'guapore', name: 'Guapore', role: 'rio_guapore', contributorKey: 'guapore', latitude: -28.8456, longitude: -51.8903 },
+  { key: 'anta_gorda', name: 'Anta Gorda', role: 'rio_guapore', contributorKey: 'guapore', latitude: -28.9698, longitude: -52.0102 },
+  { key: 'uniao_da_serra', name: 'Uniao da Serra', role: 'rio_guapore', contributorKey: 'guapore', latitude: -28.7833, longitude: -52.0236 },
+  { key: 'vespasiano_correa', name: 'Vespasiano Correa', role: 'baixo_guapore', contributorKey: 'guapore', latitude: -29.0655, longitude: -51.8625 },
+  { key: 'doutor_ricardo', name: 'Doutor Ricardo', role: 'baixo_guapore_santa_lucia', contributorKey: 'guapore', latitude: -29.0847, longitude: -51.9974 },
   { key: 'serafina_correa', name: 'Serafina Correa', role: 'rio_carreiro', contributorKey: 'carreiro', latitude: -28.7115, longitude: -51.9354 },
   { key: 'nova_bassano', name: 'Nova Bassano', role: 'rio_carreiro', contributorKey: 'carreiro', latitude: -28.7291, longitude: -51.7044 },
   { key: 'nova_prata', name: 'Nova Prata', role: 'rio_da_prata', contributorKey: 'prata', latitude: -28.7839, longitude: -51.6104 },
@@ -697,7 +702,7 @@ async function buildMucumProjection(forceRefresh = false) {
 }
 
 async function fetchProjectionTelemetry() {
-  const codes = ['86510000', '86472000', '86500000', '86471000'];
+  const codes = ['86510000', '86472000', '86471000', '86160000', '86410000', '86500000', '86580000'];
   const payload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
     Codigos_Estacoes: codes.join(','),
     'Tipo Filtro Data': 'DATA_LEITURA',

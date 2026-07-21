@@ -50,6 +50,23 @@ export type MucumProjectionData = {
     disclaimer: string;
     limitations: string[];
   };
+  operationalEstimate: {
+    levelM: number;
+    lowerLevelM: number;
+    upperLevelM: number;
+    at: string;
+    hour: number;
+    confidencePct: number;
+    confidenceLabel: 'alta' | 'media' | 'baixa';
+    basis: string;
+  };
+  operationalGuidance: {
+    observedMonitoringCadenceMinutes: number | null;
+    projectedMonitoringCadenceMinutes: number | null;
+    evacuationSafetyMarginM: number;
+    territorialEvacuationLevelsM: number[];
+    source: string;
+  };
   confidence: {
     overallPct: number;
     shortTermPct: number | null;
@@ -94,6 +111,23 @@ export type MucumProjectionData = {
     flowTrendM3sPerHour: number;
     linhaJoseJulioFlowM3s: number | null;
     uhe14JulhoOutflowM3s: number | null;
+    upstreamSignals: {
+      stationCode: string;
+      stationName: string;
+      river: string;
+      levelM: number | null;
+      flowM3s: number | null;
+      measuredAt: string | null;
+      available: boolean;
+    }[];
+    availableUpstreamSignals: number;
+    damSignals: {
+      name: string;
+      flowM3s: number | null;
+      maximumReferenceM3s: number;
+      status: 'unavailable' | 'normal' | 'high' | 'very_high' | 'maximum';
+      measuredAt: string | null;
+    }[];
     glofasAvailable: boolean;
   };
   alerts: {

@@ -8,7 +8,7 @@
       "priority": 100,
       "description": "Grande afluente que entra no eixo Antas/Taquari antes de Mucum.",
       "riverPatterns": ["RIO CARREIRO"],
-      "cities": ["Lagoa Vermelha", "Ibiraiaras", "Caseiros", "David Canabarro", "Ciriaco", "Muliterno", "Vanini", "Serafina Correa", "Nova Bassano", "Dois Lajeados", "Sao Valentim do Sul"]
+      "cities": ["Lagoa Vermelha", "Ibiraiaras", "Caseiros", "David Canabarro", "Ciriaco", "Muliterno", "Vanini", "Casca", "Camargo", "Gentil", "Guabiju", "Montauri", "Nova Alvorada", "Nova Araca", "Parai", "Santo Antonio do Palma", "Sao Domingos do Sul", "Sao Jorge", "Vila Maria", "Vista Alegre do Prata", "Serafina Correa", "Nova Bassano", "Dois Lajeados", "Sao Valentim do Sul"]
     },
     {
       "key": "guapore",
@@ -18,7 +18,7 @@
       "priority": 98,
       "description": "Contribuicao local critica junto ao sul da area urbana, incluindo Marau e Capingui, com potencial de represamento.",
       "riverPatterns": ["RIO GUAPORE", "RIO CAPIGUI", "ARROIO MARAU", "RIO MARAU", "ARROIO CAMARGO"],
-      "cities": ["Marau", "Guapore", "Anta Gorda", "Uniao da Serra", "Dois Lajeados", "Vespasiano Correa"]
+      "cities": ["Marau", "Guapore", "Anta Gorda", "Uniao da Serra", "Dois Lajeados", "Vespasiano Correa", "Doutor Ricardo"]
     },
     {
       "key": "tainhas",
@@ -38,7 +38,7 @@
       "priority": 84,
       "description": "Tributario da margem direita do sistema Antas.",
       "riverPatterns": ["RIO DA PRATA", "RIO PRATA"],
-      "cities": ["Nova Prata", "Vila Flores", "Veranopolis"]
+      "cities": ["Nova Prata", "Protasio Alves", "Vila Flores", "Veranopolis"]
     },
     {
       "key": "turvo",
@@ -48,7 +48,7 @@
       "priority": 82,
       "description": "Tributario que drena para o Rio das Antas.",
       "riverPatterns": ["RIO TURVO"],
-      "cities": ["Ibiraiaras", "Nova Prata"]
+      "cities": ["Ibiraiaras", "Muitos Capoes", "Andre da Rocha", "Nova Prata"]
     },
     {
       "key": "camisas",
@@ -144,6 +144,13 @@
       "priorityLabel": "Critica local"
     }
   ],
+  "municipalityCoverage": {
+    "reference": "SEMA/RS G040 e area contribuinte da estacao SGB Mucum 86510000",
+    "outletDrainageAreaKm2": 16000,
+    "rule": "Municipios sao indice de cobertura. O calculo deve usar somente a parcela espacial que drena para Mucum, nunca a area municipal inteira.",
+    "localCriticalOutsideOutlet": ["Marau", "Guapore", "Anta Gorda", "Uniao da Serra", "Dois Lajeados", "Vespasiano Correa", "Doutor Ricardo"],
+    "downstreamExcluded": ["Encantado", "Roca Sales", "Colinas", "Arroio do Meio", "Lajeado", "Estrela", "Bom Retiro do Sul", "Taquari"]
+  },
   "downstreamContext": [
     {
       "key": "forqueta",

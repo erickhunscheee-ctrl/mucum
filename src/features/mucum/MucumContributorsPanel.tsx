@@ -39,6 +39,7 @@ export function MucumContributorsPanel({
 }: Props) {
   const { width } = useWindowDimensions();
   const narrow = width < 900;
+  const municipalityCount = new Set(mucumContributorCatalog.contributors.flatMap((contributor) => contributor.cities)).size;
 
   return (
     <View style={styles.panel}>
@@ -47,7 +48,7 @@ export function MucumContributorsPanel({
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Contribuintes hidrologicos de Mucum</Text>
           <Text style={styles.subtitle}>
-            Chuva observada em {rainfallLabel}, previsao de 72h e separacao entre montante, efeito local e jusante.
+            Chuva observada em {rainfallLabel}, previsao de 72h e {municipalityCount} municipios no indice de cobertura, separados entre montante, efeito local e jusante.
           </Text>
         </View>
       </View>
@@ -154,8 +155,8 @@ function ContributorRow({
             </View>
           </View>
           <Text style={styles.description}>{contributor.description}</Text>
-          <Text style={styles.cityNames} numberOfLines={2}>
-            {cities.length ? cities.map((city) => city.city).join(', ') : 'Sem cidade com dado associado nesta rodada'}
+          <Text style={styles.cityNames} numberOfLines={3}>
+            Cobertura municipal: {contributor.cities.join(', ')}
           </Text>
         </View>
         <View style={styles.contributorMetrics}>
