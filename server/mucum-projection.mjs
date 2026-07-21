@@ -196,7 +196,7 @@ export function calculateMucumProjection({
     },
     model: {
       name: 'Hydro Mucum Hibrido',
-      version: '1.1.0',
+      version: '1.1.1',
       status: official ? 'oficial_curto_prazo_com_cenarios_experimentais' : 'experimental_sem_equacao_oficial_disponivel',
       officialLeadHours: official?.leadHours ?? null,
       officialVariant: official?.variant ?? null,
@@ -563,11 +563,19 @@ function buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRa
     alerts.push({ severity: 'warning', title: 'Cenario provavel cruza a cota de alerta', detail: `Primeiro cruzamento estimado em ${alert.likelyAt}.` });
   }
 
-  const combined3d = observedRain.last3dMm + sum(rainScenarios.likely.slice(0, 72));
-  if (combined3d >= 90) {
-    alerts.push({ severity: 'critical', title: 'Chuva de 3 dias em faixa historicamente severa', detail: `${round(combined3d)} mm observados e previstos; o SGB identificou 90 mm/3d como condicao minima nos eventos historicos acima de 15 m.` });
-  } else if (combined3d >= 50) {
-    alerts.push({ severity: 'warning', title: 'Chuva de 3 dias em faixa historica de cheia', detail: `${round(combined3d)} mm observados e previstos; o SGB identificou 50 mm/3d como condicao minima nos eventos historicos acima de 10 m.` });
+  const observed3dMm = observedRain.last3dMm;
+  const forecast72hMm = sum(rainScenarios.likely.slice(0, 72));
+
+  if (observed3dMm >= 90) {
+    alerts.push({ severity: 'critical', title: 'Chuva observada em faixa historicamente severa', detail: `${round(observed3dMm)} mm observados nos ultimos 3 dias. No estudo do SGB, eventos acima de 15 m tiveram ao menos 90 mm/3d.` });
+  } else if (observed3dMm >= 50) {
+    alerts.push({ severity: 'warning', title: 'Chuva observada em faixa historica de cheia', detail: `${round(observed3dMm)} mm observados nos ultimos 3 dias. No estudo do SGB, eventos acima de 10 m tiveram ao menos 50 mm/3d.` });
+  }
+
+  if (forecast72hMm >= 90) {
+    alerts.push({ severity: 'warning', title: 'Previsao de 72h supera referencia historica severa', detail: `${round(forecast72hMm)} mm previstos no cenario provavel para as proximas 72 horas. A referencia de 90 mm/3d e historica e nao determina sozinha a cota futura.` });
+  } else if (forecast72hMm >= 50) {
+    alerts.push({ severity: 'info', title: 'Previsao de 72h em faixa de atencao hidrologica', detail: `${round(forecast72hMm)} mm previstos no cenario provavel para as proximas 72 horas. A referencia historica de 50 mm/3d deve ser analisada junto com nivel, vazao e saturacao do solo.` });
   }
 
   if (!official) {

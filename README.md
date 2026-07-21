@@ -163,6 +163,7 @@ O painel `Projecao` usa uma abordagem hibrida:
 - Marau: sinal local critico do sistema Marau-Capingui-Guapore, exibido separadamente sem conversao direta em nivel de Mucum ate calibrar o efeito de remanso.
 - cenarios: P10/minimo, mediana/provavel e P90/maximo, combinados com diferentes coeficientes de escoamento.
 - confianca: atualidade, entradas hidrologicas, ensemble, cobertura da bacia e reducao progressiva pelo horizonte.
+- alertas de chuva: o acumulado observado dos ultimos 3 dias e a previsao das proximas 72 horas sao comparados separadamente com as referencias historicas do SGB; as duas janelas nao sao somadas.
 
 As cotas operacionais exibidas para a estacao `86510000` sao 5 m (atencao), 9 m (alerta) e 18 m (inundacao), conforme materiais atuais do SGB. As cotas usam a referencia local da regua da estacao.
 

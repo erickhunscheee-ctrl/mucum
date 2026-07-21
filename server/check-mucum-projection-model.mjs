@@ -91,6 +91,7 @@ assert.ok(result.confidence.shortTermPct > result.confidence.next72hPct);
 assert.ok(result.drivers.forecastRain72hMm.minimum <= result.drivers.forecastRain72hMm.likely);
 assert.ok(result.drivers.forecastRain72hMm.likely <= result.drivers.forecastRain72hMm.maximum);
 assert.ok(result.drivers.localCriticalRain72hMm.likely > 0);
+assert.ok(result.alerts.every((alert) => !alert.detail.includes('observados e previstos')));
 result.timeline.forEach((row) => {
   assert.ok(row.minimumLevelM <= row.likelyLevelM);
   assert.ok(row.likelyLevelM <= row.maximumLevelM);
@@ -99,6 +100,29 @@ result.timeline.forEach((row) => {
 const flowAtNineMeters = dischargeFromMucumStage(9);
 assert.ok(flowAtNineMeters);
 assert.ok(Math.abs((stageFromMucumDischarge(flowAtNineMeters) ?? 0) - 9) < 0.01);
+
+const wetResult = calculateMucumProjection({
+  current: {
+    ...current,
+    regionalRainfall: {
+      ...current.regionalRainfall,
+      cities: MUCUM_RAIN_GAUGES.map((gauge) => ({
+        city: gauge.city,
+        daily: [
+          { date: '2026-07-15', rainfallMm: 35, readingCount: 24 },
+          { date: '2026-07-16', rainfallMm: 35, readingCount: 24 },
+          { date: '2026-07-17', rainfallMm: 30, readingCount: 12 },
+        ],
+      })),
+    },
+  },
+  forecast,
+  ensemble,
+  generatedAt: base.toISOString(),
+});
+
+assert.ok(wetResult.alerts.some((alert) => alert.title === 'Chuva observada em faixa historicamente severa'));
+assert.ok(wetResult.alerts.every((alert) => !alert.detail.includes('observados e previstos')));
 
 console.log(JSON.stringify({
   status: 'ok',
