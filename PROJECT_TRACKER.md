@@ -64,6 +64,7 @@ Construir uma solucao para Mucum com:
 - [x] Destaque de Antas, Carreiro e Guapore com cidades, chuva observada e previsao de 72h.
 - [x] Consulta completa dos tributarios e separacao visual dos rios a jusante.
 - [x] Selecao multipla de cidades para comparar chuva observada no periodo e previsao de 72h.
+- [x] Quadro explicito de chuva observada nas cabeceiras por cidade, sistema formador, pico diario e estacao utilizada.
 - [x] Ampliacao da previsao meteorologica para 27 pontos, incluindo as cidades prioritarias do Antas, Carreiro e Tainhas.
 - [x] Container unico de producao servindo Expo Web e proxy `/api` na porta 3000.
 - [x] Guia de deploy para Docker, VPS e Easypanel sem credenciais privadas no bundle.

@@ -35,6 +35,7 @@ import { DashboardDataStatus } from '../../types/dashboard';
 import { colors } from '../../theme/mucumTheme';
 import { MucumContributorsPanel } from './MucumContributorsPanel';
 import { mucumContributorCatalog } from './mucumContributors';
+import { UpstreamCityRainfallPanel } from './UpstreamCityRainfallPanel';
 import {
   formatForecastTime,
   formatMeasuredAt,
@@ -555,6 +556,7 @@ function RainfallSection({
         <KpiCard label="Previsao 72h" value={formatNullable(forecast?.basin.next72hMm, '')} unit="mm" icon={CloudRain} accent="blue" trend={forecast?.basin.peakPointName ?? 'bacia'} />
       </View>
       <UpstreamScopeBar current={current} />
+      <UpstreamCityRainfallPanel current={current} rainfallLabel={rainfallLabel} />
       <MucumContributorsPanel
         current={current}
         forecast={forecast}
