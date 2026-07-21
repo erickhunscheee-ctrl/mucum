@@ -56,7 +56,7 @@ const rainfallWindowOptions: { label: string; hours: RainfallWindowHours }[] = [
   { label: 'Mes', hours: 720 },
 ];
 
-const priorityRainfallCities = ['Santa Tereza', 'Guapore', 'Jaquirana'];
+const priorityRainfallCities = ['Santa Tereza', 'Guapore', 'Marau', 'Jaquirana', 'Vacaria'];
 
 const KPI_ACCENTS = {
   green: { accent: colors.safe, iconBg: colors.safeSoft, iconColor: colors.safe },
@@ -357,6 +357,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
 
   const peak = projection.peaks.likely;
   const forecastRain = projection.drivers.forecastRain72hMm;
+  const marauRain = projection.drivers.localCriticalRain72hMm;
   const confidenceAccent = projection.confidence.overallPct >= 75 ? 'green' : projection.confidence.overallPct >= 50 ? 'amber' : 'red';
 
   return (
@@ -375,6 +376,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
         <KpiCard label="Pico provavel" value={formatNullable(peak.levelM, '')} unit="m" icon={TrendingUp} accent={projectionStatusAccent(peak.status)} trend={`${peak.hour}h - ${formatForecastTime(peak.at)}`} />
         <KpiCard label="Confianca curto prazo" value={String(projection.confidence.overallPct)} unit="%" icon={Gauge} accent={confidenceAccent} trend={`${projection.model.officialLeadHours ?? 6} horas`} />
         <KpiCard label="Chuva prevista 72h" value={formatNullable(forecastRain.likely, '')} unit="mm" icon={CloudRain} accent="blue" trend={`${forecastRain.minimum} a ${forecastRain.maximum} mm`} />
+        <KpiCard label="Marau / Guapore 72h" value={formatNullable(marauRain?.likely, '')} unit="mm" icon={CloudRain} accent="amber" trend={marauRain ? `${marauRain.minimum} a ${marauRain.maximum} mm` : 'sinal local indisponivel'} />
       </View>
 
       <View style={styles.projectionAlerts}>
@@ -467,6 +469,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
           <Text style={styles.dataTag}>{projection.drivers.glofasAvailable ? 'GloFAS ativo' : 'GloFAS indisponivel'}</Text>
           <Text style={styles.dataTag}>{projection.drivers.ensembleMembers} membros</Text>
           <Text style={styles.dataTag}>{projection.drivers.basinRainCoveragePct}% da bacia</Text>
+          <Text style={styles.dataTag}>Marau/Guapore {projection.drivers.localCriticalRainCoveragePct ?? 0}%</Text>
         </View>
       </View>
     </>

@@ -2,7 +2,11 @@ import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, isAbsolute, relative, resolve } from 'node:path';
 
-import { calculateMucumProjection, MUCUM_RAIN_GAUGES } from './mucum-projection.mjs';
+import {
+  calculateMucumProjection,
+  MUCUM_LOCAL_CRITICAL_RAIN_GAUGES,
+  MUCUM_RAIN_GAUGES,
+} from './mucum-projection.mjs';
 
 loadLocalEnv();
 
@@ -46,6 +50,7 @@ const FORECAST_POINTS = [
   { key: 'sao_francisco_de_paula', name: 'Sao Francisco de Paula', role: 'rio_tainhas', contributorKey: 'tainhas', latitude: -29.4481, longitude: -50.5832 },
   { key: 'ibiraiaras', name: 'Ibiraiaras', role: 'rio_carreiro', contributorKey: 'carreiro', latitude: -28.3741, longitude: -51.6377 },
   { key: 'lagoa_vermelha', name: 'Lagoa Vermelha', role: 'rio_carreiro', contributorKey: 'carreiro', latitude: -28.2086, longitude: -51.5250 },
+  { key: 'marau', name: 'Marau', role: 'rio_guapore_local_critical', contributorKey: 'guapore', latitude: -28.4569, longitude: -52.1892 },
   { key: 'guapore', name: 'Guapore', role: 'rio_guapore', contributorKey: 'guapore', latitude: -28.8456, longitude: -51.8903 },
   { key: 'serafina_correa', name: 'Serafina Correa', role: 'rio_carreiro', contributorKey: 'carreiro', latitude: -28.7115, longitude: -51.9354 },
   { key: 'nova_bassano', name: 'Nova Bassano', role: 'rio_carreiro', contributorKey: 'carreiro', latitude: -28.7291, longitude: -51.7044 },
@@ -704,7 +709,8 @@ async function fetchProjectionTelemetry() {
 }
 
 async function fetchBasinEnsemble() {
-  const points = MUCUM_RAIN_GAUGES.map((gauge) => ({
+  const gauges = [...MUCUM_RAIN_GAUGES, ...MUCUM_LOCAL_CRITICAL_RAIN_GAUGES];
+  const points = gauges.map((gauge) => ({
     ...gauge,
     point: FORECAST_POINTS.find((item) => item.key === gauge.key),
   })).filter((item) => item.point);

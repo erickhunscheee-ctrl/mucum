@@ -66,6 +66,7 @@ Construir uma solucao para Mucum com:
 - [x] Selecao multipla de cidades para comparar chuva observada no periodo e previsao de 72h.
 - [x] Quadro explicito de chuva observada nas cabeceiras por cidade, sistema formador, pico diario e estacao utilizada.
 - [x] Redundancia pluviometrica por cidade, consultando ate cinco estacoes ANA e incluindo fonte convencional quando disponivel.
+- [x] Marau integrado como sinal local critico do sistema Capingui-Guapore e Vacaria mantida como cabeceira direta do Antas.
 - [x] Ampliacao da previsao meteorologica para 27 pontos, incluindo as cidades prioritarias do Antas, Carreiro e Tainhas.
 - [x] Container unico de producao servindo Expo Web e proxy `/api` na porta 3000.
 - [x] Guia de deploy para Docker, VPS e Easypanel sem credenciais privadas no bundle.

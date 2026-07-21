@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   calculateMucumProjection,
   dischargeFromMucumStage,
+  MUCUM_LOCAL_CRITICAL_RAIN_GAUGES,
   MUCUM_RAIN_GAUGES,
   stageFromMucumDischarge,
 } from './mucum-projection.mjs';
@@ -49,14 +50,14 @@ const current = {
 };
 
 const forecast = {
-  points: MUCUM_RAIN_GAUGES.map((gauge) => ({
+  points: [...MUCUM_RAIN_GAUGES, ...MUCUM_LOCAL_CRITICAL_RAIN_GAUGES].map((gauge) => ({
     key: gauge.key,
     hours: Array.from({ length: 72 }, (_, hour) => ({ precipitationMm: hour < 18 ? 0.6 : 0 })),
   })),
 };
 
 const ensemble = {
-  points: MUCUM_RAIN_GAUGES.map((gauge) => ({
+  points: [...MUCUM_RAIN_GAUGES, ...MUCUM_LOCAL_CRITICAL_RAIN_GAUGES].map((gauge) => ({
     key: gauge.key,
     weight: gauge.weight,
     payload: {
@@ -89,6 +90,7 @@ assert.equal(result.thresholdCrossings.map((item) => item.levelM).join(','), '5,
 assert.ok(result.confidence.shortTermPct > result.confidence.next72hPct);
 assert.ok(result.drivers.forecastRain72hMm.minimum <= result.drivers.forecastRain72hMm.likely);
 assert.ok(result.drivers.forecastRain72hMm.likely <= result.drivers.forecastRain72hMm.maximum);
+assert.ok(result.drivers.localCriticalRain72hMm.likely > 0);
 result.timeline.forEach((row) => {
   assert.ok(row.minimumLevelM <= row.likelyLevelM);
   assert.ok(row.likelyLevelM <= row.maximumLevelM);

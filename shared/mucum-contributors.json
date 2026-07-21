@@ -16,9 +16,9 @@
       "relation": "local_critical",
       "influence": "very_high",
       "priority": 98,
-      "description": "Contribuicao local critica junto ao sul da area urbana, com potencial de represamento.",
-      "riverPatterns": ["RIO GUAPORE"],
-      "cities": ["Guapore", "Anta Gorda", "Uniao da Serra", "Dois Lajeados", "Vespasiano Correa"]
+      "description": "Contribuicao local critica junto ao sul da area urbana, incluindo Marau e Capingui, com potencial de represamento.",
+      "riverPatterns": ["RIO GUAPORE", "RIO CAPIGUI", "ARROIO MARAU", "RIO MARAU", "ARROIO CAMARGO"],
+      "cities": ["Marau", "Guapore", "Anta Gorda", "Uniao da Serra", "Dois Lajeados", "Vespasiano Correa"]
     },
     {
       "key": "tainhas",

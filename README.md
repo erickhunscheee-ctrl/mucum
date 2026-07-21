@@ -159,6 +159,8 @@ O painel `Projecao` usa uma abordagem hibrida:
 - 4 horas: equacao de propagacao do SGB com Linha Jose Julio, quando as entradas estao disponiveis.
 - 6 horas: equacao de propagacao do SGB com a vazao defluente da UHE 14 de Julho como alternativa.
 - 6 a 72 horas: chuva ensemble GFS ponderada na area contribuinte, modelo chuva-vazao conceitual, curva-chave de Mucum e sinal diario GloFAS com peso reduzido.
+- Vacaria: cabeceira direta do Antas, incluida na chuva ponderada que alimenta o modelo chuva-vazao.
+- Marau: sinal local critico do sistema Marau-Capingui-Guapore, exibido separadamente sem conversao direta em nivel de Mucum ate calibrar o efeito de remanso.
 - cenarios: P10/minimo, mediana/provavel e P90/maximo, combinados com diferentes coeficientes de escoamento.
 - confianca: atualidade, entradas hidrologicas, ensemble, cobertura da bacia e reducao progressiva pelo horizonte.
 
@@ -212,16 +214,18 @@ Essa migration remove Encantado, Roca Sales, Forqueta e outros pontos a jusante 
 
 Depois, execute `supabase/20260718_mucum_contributor_classification.sql` para adicionar a classificacao por contribuinte, destacar Antas, Carreiro e Guapore e manter os rios a jusante separados do escopo de chuva que afeta Mucum.
 
+Para incluir estacoes existentes de Marau no sistema local critico do Guapore, execute tambem `supabase/20260721_marau_guapore_scope.sql`.
+
 O arquivo `shared/mucum-contributors.json` organiza o escopo em:
 
 - sistema Antas e Carreiro como influencias principais;
-- Guapore como contribuicao local critica;
+- Guapore, Marau e Capingui como contribuicao local critica;
 - tributarios de montante e drenagem local;
 - Forqueta, Jacare e Taquari-Mirim como contexto a jusante.
 
 Na aba `Chuvas`, as cidades prioritarias mostram o acumulado do periodo selecionado e a previsao de 72h. A aba `Rios e vazao` mantem a lista completa, inclusive quando um tributario esta sem estacao ativa.
 
-O bloco `Cidades no comparativo` permite marcar varias cidades. O grafico compara o acumulado observado no periodo ativo (`24h`, `7d` ou `30d`) com a previsao das proximas `72h`; Santa Tereza, Guapore e Jaquirana formam a selecao prioritaria inicial.
+O bloco `Cidades no comparativo` permite marcar varias cidades. O grafico compara o acumulado observado no periodo ativo (`24h`, `7d` ou `30d`) com a previsao das proximas `72h`; Santa Tereza, Guapore, Marau, Jaquirana e Vacaria formam a selecao prioritaria inicial.
 
 ## Barragens
 

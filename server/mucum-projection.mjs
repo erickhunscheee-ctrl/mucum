@@ -11,6 +11,10 @@ export const MUCUM_RAIN_GAUGES = [
   { key: 'vacaria', city: 'Vacaria', weight: 0.16 },
 ];
 
+export const MUCUM_LOCAL_CRITICAL_RAIN_GAUGES = [
+  { key: 'marau', city: 'Marau', weight: 1 },
+];
+
 export const MUCUM_THRESHOLDS_M = {
   attention: 5,
   alert: 9,
@@ -83,6 +87,7 @@ export function calculateMucumProjection({
   const flowTrendM3sPerHour = observedTrend(mucumReadings, 'flowM3s', baseTime, 6, 1200);
   const observedRain = observedBasinRain(current);
   const rainScenarios = basinRainScenarios(ensemble, forecast);
+  const localCriticalRainScenarios = basinRainScenarios(ensemble, forecast, MUCUM_LOCAL_CRITICAL_RAIN_GAUGES);
   const runoffCoefficients = runoffScenarioCoefficients(observedRain);
   const runoff = {
     minimum: routeRainfallToFlow(rainScenarios.minimum, runoffCoefficients.minimum),
@@ -191,7 +196,7 @@ export function calculateMucumProjection({
     },
     model: {
       name: 'Hydro Mucum Hibrido',
-      version: '1.0.0',
+      version: '1.1.0',
       status: official ? 'oficial_curto_prazo_com_cenarios_experimentais' : 'experimental_sem_equacao_oficial_disponivel',
       officialLeadHours: official?.leadHours ?? null,
       officialVariant: official?.variant ?? null,
@@ -206,6 +211,7 @@ export function calculateMucumProjection({
         'Os cenarios de 6 a 72 horas usam chuva-vazao conceitual e devem ser recalibrados com eventos historicos locais.',
         'A curva-chave e as vazoes de barragens podem mudar; valide versoes e leituras com SGB e operadores.',
         'O GloFAS possui resolucao aproximada de 5 km e entra apenas como sinal independente de baixa ponderacao.',
+        'A chuva de Marau/Capingui representa risco local do Guapore e nao e convertida diretamente em nivel de Mucum sem calibracao de remanso.',
       ],
     },
     confidence: {
@@ -237,6 +243,12 @@ export function calculateMucumProjection({
         likely: round(sum(rainScenarios.likely)),
         maximum: round(sum(rainScenarios.maximum)),
       },
+      localCriticalRain72hMm: {
+        minimum: round(sum(localCriticalRainScenarios.minimum)),
+        likely: round(sum(localCriticalRainScenarios.likely)),
+        maximum: round(sum(localCriticalRainScenarios.maximum)),
+      },
+      localCriticalRainCoveragePct: Math.round(100 * localCriticalRainScenarios.coverage),
       ensembleMembers: rainScenarios.ensembleMembers,
       basinRainCoveragePct: coverageScore,
       runoffCoefficients,
@@ -298,11 +310,11 @@ function projectedBaseFlow({ hour, currentFlowM3s, official, flowTrendM3sPerHour
   return Math.max(0, currentFlowM3s + integratedTrend);
 }
 
-function basinRainScenarios(ensemble, forecast) {
-  const ensembleSummary = summarizeEnsemble(ensemble);
+function basinRainScenarios(ensemble, forecast, gauges = MUCUM_RAIN_GAUGES) {
+  const ensembleSummary = summarizeEnsemble(ensemble, gauges);
   if (ensembleSummary) return ensembleSummary;
 
-  const deterministic = weightedForecastHours(forecast);
+  const deterministic = weightedForecastHours(forecast, gauges);
   return {
     minimum: deterministic.map((value) => value * 0.60),
     likely: deterministic,
@@ -312,9 +324,14 @@ function basinRainScenarios(ensemble, forecast) {
   };
 }
 
-function summarizeEnsemble(ensemble) {
+function summarizeEnsemble(ensemble, gauges) {
   const points = Array.isArray(ensemble?.points) ? ensemble.points : [];
-  const available = points.filter((point) => point?.payload?.hourly);
+  const available = gauges
+    .map((gauge) => {
+      const point = points.find((candidate) => candidate.key === gauge.key);
+      return point?.payload?.hourly ? { ...point, weight: gauge.weight } : null;
+    })
+    .filter(Boolean);
   if (!available.length) return null;
 
   const memberKeys = available
@@ -322,6 +339,7 @@ function summarizeEnsemble(ensemble) {
     .reduce((common, keys) => common.filter((key) => keys.includes(key)));
   if (!memberKeys.length) return null;
 
+  const totalWeight = sum(gauges.map((gauge) => gauge.weight));
   const availableWeight = sum(available.map((point) => finiteNumber(point.weight) ?? 0));
   if (availableWeight <= 0) return null;
 
@@ -337,13 +355,13 @@ function summarizeEnsemble(ensemble) {
     likely: Array.from({ length: PROJECTION_HOURS }, (_, hour) => quantile(memberSeries.map((series) => series[hour]), 0.50)),
     maximum: Array.from({ length: PROJECTION_HOURS }, (_, hour) => quantile(memberSeries.map((series) => series[hour]), 0.90)),
     ensembleMembers: memberSeries.length,
-    coverage: clamp(availableWeight, 0, 1),
+    coverage: totalWeight > 0 ? clamp(availableWeight / totalWeight, 0, 1) : 0,
   };
 }
 
-function weightedForecastHours(forecast) {
+function weightedForecastHours(forecast, gauges = MUCUM_RAIN_GAUGES) {
   const points = forecast?.points ?? [];
-  const weighted = MUCUM_RAIN_GAUGES
+  const weighted = gauges
     .map((gauge) => ({ gauge, point: points.find((point) => point.key === gauge.key) }))
     .filter((item) => item.point?.hours?.length);
   const availableWeight = sum(weighted.map((item) => item.gauge.weight));

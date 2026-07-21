@@ -82,6 +82,8 @@ export type MucumProjectionData = {
     observedRain3dMm: number;
     observedRain7dMm: number;
     forecastRain72hMm: { minimum: number; likely: number; maximum: number };
+    localCriticalRain72hMm: { minimum: number; likely: number; maximum: number };
+    localCriticalRainCoveragePct: number;
     ensembleMembers: number;
     basinRainCoveragePct: number;
     runoffCoefficients: { minimum: number; likely: number; maximum: number };
