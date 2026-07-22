@@ -316,13 +316,13 @@ const server = createServer(async (request, response) => {
 
     const body = await anaResponse.text();
     const parsedBody = parseJsonOrNull(body);
-    await saveAnaApiResponse({
+    saveAnaApiResponse({
       endpointKey: getEndpointKey(anaPath),
       requestUrl: targetUrl.toString(),
       requestParams: Object.fromEntries(targetUrl.searchParams.entries()),
       httpStatus: anaResponse.status,
       payload: parsedBody ?? { raw: summarizeExternalBody(body) },
-    });
+    }).catch(err => console.error('Erro ao salvar no Supabase:', err));
 
     if (parsedBody === null) {
       sendJson(response, anaResponse.ok ? 502 : anaResponse.status, {
@@ -2056,13 +2056,13 @@ async function anaRequest(path, params = {}) {
   const responseBody = await response.text();
   const payload = tryParseJson(responseBody);
 
-  await saveAnaApiResponse({
+  saveAnaApiResponse({
     endpointKey: getEndpointKey(path),
     requestUrl: url.toString(),
     requestParams: params,
     httpStatus: response.status,
     payload,
-  });
+  }).catch(err => console.error('Erro ao salvar no Supabase:', err));
 
   if (!response.ok || !isRecord(payload)) {
     throw new Error(`ANA ${getEndpointKey(path)} retornou HTTP ${response.status}: ${responseBody.slice(0, 160)}`);
