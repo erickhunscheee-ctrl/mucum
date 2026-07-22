@@ -434,6 +434,8 @@ async function resolveDashboardSnapshot({
   const stored = await getDashboardSnapshot(snapshotKey, rainfallWindowHours);
 
   if (stored && !forceRefresh) {
+    // If not a forced refresh, we can return the stored payload (even if stale) and do a background refresh if we wanted to.
+    // Currently, it just returns it without background refresh.
     return payloadWithSnapshot(stored.payload, stored, null);
   }
 
@@ -445,12 +447,8 @@ async function resolveDashboardSnapshot({
     getDataUpdatedAt,
   });
 
-  if (stored && forceRefresh) {
-    void refreshPromise.catch((error) => {
-      console.warn(`Atualizacao assincroma de ${snapshotKey}/${rainfallWindowHours} falhou: ${error instanceof Error ? error.message : String(error)}`);
-    });
-    return payloadWithSnapshot(stored.payload, stored, null);
-  }
+  // If forceRefresh is true, we AWAIT the refreshPromise so the user gets the fresh data.
+  // We only fallback to `stored` if the refreshPromise throws an error.
 
   try {
     return await refreshPromise;
@@ -2382,7 +2380,7 @@ function refreshDashboardSnapshot({ snapshotKey, rainfallWindowHours, ttlMs, bui
       last_error: null,
     };
 
-    await saveDashboardSnapshot(snapshotKey, rainfallWindowHours, snapshot);
+    saveDashboardSnapshot(snapshotKey, rainfallWindowHours, snapshot).catch(err => console.error('Erro ao salvar snapshot:', err));
     return payloadWithSnapshot(payload, snapshot, null, 'live');
   })().finally(() => {
     dashboardRefreshPromises.delete(refreshKey);
