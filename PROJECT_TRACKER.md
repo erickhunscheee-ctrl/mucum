@@ -69,6 +69,8 @@ Construir uma solucao para Mucum com:
 - [x] Marau integrado como sinal local critico do sistema Capingui-Guapore e Vacaria mantida como cabeceira direta do Antas.
 - [x] Ampliacao da previsao meteorologica para 27 pontos, incluindo as cidades prioritarias do Antas, Carreiro e Tainhas.
 - [x] Alertas de chuva corrigidos para separar o acumulado observado de 3 dias da previsao das proximas 72h.
+- [x] Autenticacao ANA resiliente com timeout, validade do token e renovacao automatica apos HTTP 401.
+- [x] Atualizacao pesada do dashboard executada em segundo plano quando existe snapshot, evitando timeout no proxy reverso.
 - [x] Container unico de producao servindo Expo Web e proxy `/api` na porta 3000.
 - [x] Guia de deploy para Docker, VPS e Easypanel sem credenciais privadas no bundle.
 - [x] Migration de barragens em `supabase/20260716_dams.sql`.

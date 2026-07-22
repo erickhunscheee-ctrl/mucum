@@ -126,6 +126,8 @@ Essa rota tambem agrega chuva regional da bacia Taquari-Antas/sub-bacia 86, usan
 
 No desenvolvimento web, as chamadas passam pelo proxy `http://localhost:3001/api/ana`, porque a ANA bloqueia requisicoes cross-origin diretas por CORS. No container de producao, painel e `/api` usam o mesmo dominio. Em Android/iOS, o app continua apontando para o backend configurado para o ambiente.
 
+O proxy limita o tempo de espera da ANA, compartilha o token entre requisicoes concorrentes e renova a autenticacao automaticamente quando recebe HTTP `401`. Se ja existir snapshot, `refresh=true` devolve imediatamente o ultimo dado e executa uma unica atualizacao em segundo plano; se a atualizacao externa falhar, o snapshot continua disponivel.
+
 Rotas locais do proxy:
 
 - `GET /api/health`

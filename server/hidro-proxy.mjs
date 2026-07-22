@@ -12,6 +12,10 @@ loadLocalEnv();
 
 const PORT = Number(process.env.PORT || 3001);
 const ANA_BASE_URL = 'https://www.ana.gov.br/hidrowebservice';
+const ANA_REQUEST_TIMEOUT_MS = 30_000;
+const ANA_AUTH_TIMEOUT_MS = 15_000;
+const ANA_TOKEN_FALLBACK_TTL_MS = 30 * 60 * 1000;
+const ANA_TOKEN_EXPIRY_SKEW_MS = 60 * 1000;
 const PROXY_PREFIX = '/api/ana';
 const HEALTH_PATH = '/api/health';
 const MUCUM_CONTEXT_PATH = '/api/mucum/context';
@@ -124,6 +128,7 @@ const HISTORICAL_DAM_FLOW_STATIONS = [
 ];
 
 let cachedToken = null;
+let cachedTokenExpiresAt = 0;
 let tokenRequestPromise = null;
 let cachedMucumContext = null;
 let cachedMucumContextAt = 0;
@@ -131,6 +136,7 @@ let dashboardSnapshotStorageAvailable = true;
 let projectionRunStorageAvailable = true;
 let cachedHistoricalFloods = null;
 let cachedHistoricalFloodsAt = 0;
+const dashboardRefreshPromises = new Map();
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -290,10 +296,23 @@ const server = createServer(async (request, response) => {
   const targetUrl = new URL(`${ANA_BASE_URL}${anaPath}${incomingUrl.search}`);
 
   try {
-    const anaResponse = await fetch(targetUrl, {
+    let anaResponse = await fetchWithTimeout(targetUrl, {
       method: 'GET',
       headers: await buildForwardHeaders(request.headers),
-    });
+    }, ANA_REQUEST_TIMEOUT_MS);
+
+    if (anaResponse.status === 401 && !request.headers.authorization) {
+      const refreshedToken = await getEnvToken(true);
+      if (refreshedToken) {
+        anaResponse = await fetchWithTimeout(targetUrl, {
+          method: 'GET',
+          headers: {
+            Accept: request.headers.accept || 'application/json',
+            Authorization: `Bearer ${refreshedToken}`,
+          },
+        }, ANA_REQUEST_TIMEOUT_MS);
+      }
+    }
 
     const body = await anaResponse.text();
     const parsedBody = parseJsonOrNull(body);
@@ -418,21 +437,23 @@ async function resolveDashboardSnapshot({
     return payloadWithSnapshot(stored.payload, stored, null);
   }
 
+  const refreshPromise = refreshDashboardSnapshot({
+    snapshotKey,
+    rainfallWindowHours,
+    ttlMs,
+    build,
+    getDataUpdatedAt,
+  });
+
+  if (stored && forceRefresh) {
+    void refreshPromise.catch((error) => {
+      console.warn(`Atualizacao assincroma de ${snapshotKey}/${rainfallWindowHours} falhou: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    return payloadWithSnapshot(stored.payload, stored, null);
+  }
+
   try {
-    const payload = await build();
-    const fetchedAt = new Date().toISOString();
-    const dataUpdatedAt = validIsoDate(getDataUpdatedAt(payload)) ?? fetchedAt;
-    const snapshot = {
-      payload,
-      data_updated_at: dataUpdatedAt,
-      fetched_at: fetchedAt,
-      expires_at: new Date(Date.parse(fetchedAt) + ttlMs).toISOString(),
-      last_error: null,
-    };
-
-    await saveDashboardSnapshot(snapshotKey, rainfallWindowHours, snapshot);
-
-    return payloadWithSnapshot(payload, snapshot, null, 'live');
+    return await refreshPromise;
   } catch (error) {
     if (stored) {
       return payloadWithSnapshot(stored.payload, stored, error);
@@ -2003,7 +2024,7 @@ function currentSaoPauloDate(date = new Date()) {
 }
 
 async function anaRequest(path, params = {}) {
-  const token = await getEnvToken();
+  let token = await getEnvToken();
 
   if (!token) {
     throw new Error('Token ANA indisponivel.');
@@ -2012,13 +2033,26 @@ async function anaRequest(path, params = {}) {
   const url = new URL(`${ANA_BASE_URL}${path}`);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
-  const response = await fetch(url, {
+  let response = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
     },
-  });
+  }, ANA_REQUEST_TIMEOUT_MS);
+
+  if (response.status === 401) {
+    token = await getEnvToken(true);
+    if (token) {
+      response = await fetchWithTimeout(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      }, ANA_REQUEST_TIMEOUT_MS);
+    }
+  }
   const responseBody = await response.text();
   const payload = tryParseJson(responseBody);
 
@@ -2250,12 +2284,19 @@ function summarizeExternalBody(body) {
 }
 
 async function getEnvToken(forceRefresh = false) {
-  if (cachedToken && !forceRefresh) {
+  const tokenIsUsable = cachedToken
+    && Date.now() < cachedTokenExpiresAt - ANA_TOKEN_EXPIRY_SKEW_MS;
+
+  if (tokenIsUsable && !forceRefresh) {
     return cachedToken;
   }
 
-  if (tokenRequestPromise && !forceRefresh) {
+  if (tokenRequestPromise) {
     return tokenRequestPromise;
+  }
+
+  if (forceRefresh || !tokenIsUsable) {
+    clearCachedToken();
   }
 
   tokenRequestPromise = requestEnvToken();
@@ -2268,7 +2309,6 @@ async function getEnvToken(forceRefresh = false) {
 }
 
 async function requestEnvToken() {
-
   const identifier = process.env.ANA_IDENTIFICADOR;
   const password = process.env.ANA_SENHA;
 
@@ -2278,19 +2318,20 @@ async function requestEnvToken() {
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const response = await fetch(`${ANA_BASE_URL}/EstacoesTelemetricas/OAUth/v1`, {
+      const response = await fetchWithTimeout(`${ANA_BASE_URL}/EstacoesTelemetricas/OAUth/v1`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
           Identificador: identifier,
           Senha: password,
         },
-      });
+      }, ANA_AUTH_TIMEOUT_MS);
       const payload = await response.json();
       const token = findToken(payload);
 
       if (response.ok && token) {
         cachedToken = token;
+        cachedTokenExpiresAt = tokenExpirationMs(token) ?? Date.now() + ANA_TOKEN_FALLBACK_TTL_MS;
         return cachedToken;
       }
     } catch {
@@ -2302,8 +2343,64 @@ async function requestEnvToken() {
     }
   }
 
-  cachedToken = null;
+  clearCachedToken();
   return null;
+}
+
+function clearCachedToken() {
+  cachedToken = null;
+  cachedTokenExpiresAt = 0;
+}
+
+function tokenExpirationMs(token) {
+  const parts = String(token).split('.');
+  if (parts.length !== 3) return null;
+
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    const expiration = Number(payload.exp);
+    return Number.isFinite(expiration) ? expiration * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function refreshDashboardSnapshot({ snapshotKey, rainfallWindowHours, ttlMs, build, getDataUpdatedAt }) {
+  const refreshKey = `${snapshotKey}:${rainfallWindowHours}`;
+  const activeRefresh = dashboardRefreshPromises.get(refreshKey);
+  if (activeRefresh) return activeRefresh;
+
+  const refreshPromise = (async () => {
+    const payload = await build();
+    const fetchedAt = new Date().toISOString();
+    const dataUpdatedAt = validIsoDate(getDataUpdatedAt(payload)) ?? fetchedAt;
+    const snapshot = {
+      payload,
+      data_updated_at: dataUpdatedAt,
+      fetched_at: fetchedAt,
+      expires_at: new Date(Date.parse(fetchedAt) + ttlMs).toISOString(),
+      last_error: null,
+    };
+
+    await saveDashboardSnapshot(snapshotKey, rainfallWindowHours, snapshot);
+    return payloadWithSnapshot(payload, snapshot, null, 'live');
+  })().finally(() => {
+    dashboardRefreshPromises.delete(refreshKey);
+  });
+
+  dashboardRefreshPromises.set(refreshKey, refreshPromise);
+  return refreshPromise;
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function findToken(value) {
