@@ -290,7 +290,7 @@ function SectionHero({ section, onRefresh }: { section: AdminSection; onRefresh:
   const content: Record<Exclude<AdminSection, 'admin' | 'ana'>, { title: string; text: string }> = {
     dashboard: { title: 'Panorama hidrologico de Mucum', text: 'Indicadores essenciais da sub-bacia 86 em uma leitura rapida.' },
     monitoring: { title: 'Monitoramento operacional', text: 'Acompanhe sinais de chuva, nivel, vazao e integracoes em tempo real.' },
-    projection: { title: 'Projecao hidrologica', text: 'Cenarios de nivel e vazao para Mucum, com pico, cotas operacionais e confianca por horizonte.' },
+    projection: { title: 'Projecao hidrologica', text: 'Cenarios de nivel e vazao para Mucum, com pico, cotas operacionais e qualidade das entradas por horizonte.' },
     historical: { title: 'Enchentes antigas de Mucum', text: 'Curvas observadas de nivel e vazao, picos documentados e comparacao com a cheia atual.' },
     contingency: { title: 'Plano de contingencia', text: 'Gatilhos oficiais, acoes minimas, rotas, alojamentos e referencias historicas para apoiar a operacao municipal.' },
     rainfall: { title: 'Chuvas na bacia Taquari-Antas', text: 'Acumulados observados, distribuicao regional e previsao para os proximos dias.' },
@@ -404,9 +404,10 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
 
       <View style={styles.kpiGrid}>
         <KpiCard label="Nivel atual" value={formatNullable(projection.current.levelM, '')} unit="m" icon={Waves} accent={projectionStatusAccent(projection.current.status)} trend={projectionStatusLabel(projection.current.status)} />
+        <KpiCard label="Ritmo observado 1h" value={formatSignedNumber(projection.drivers.recentStageTrendMPerHour)} unit="m/h" icon={TrendingUp} accent={projection.drivers.recentStageTrendMPerHour >= 1 ? 'red' : projection.drivers.recentStageTrendMPerHour >= 0.5 ? 'amber' : 'blue'} trend="nao extrapolado diretamente" />
         <KpiCard label="Estimativa operacional" value={formatNullable(operationalEstimate.levelM, '')} unit="m" icon={TrendingUp} accent={projectionStatusAccent(peak.status)} trend={`${operationalEstimate.hour}h - ${formatForecastTime(operationalEstimate.at)}`} />
-        <KpiCard label="Faixa dos cenarios no pico" value={`${operationalEstimate.lowerLevelM} a ${operationalEstimate.upperLevelM}`} unit="m" icon={Gauge} accent={confidenceAccent} trend={`${operationalEstimate.confidencePct}% de confianca`} />
-        <KpiCard label="Confianca curto prazo" value={String(projection.confidence.overallPct)} unit="%" icon={Gauge} accent={confidenceAccent} trend={`${projection.model.officialLeadHours ?? 6} horas`} />
+        <KpiCard label="Faixa dos cenarios no pico" value={`${operationalEstimate.lowerLevelM} a ${operationalEstimate.upperLevelM}`} unit="m" icon={Gauge} accent={confidenceAccent} trend={`${operationalEstimate.confidencePct}% de qualidade`} />
+        <KpiCard label="Qualidade curto prazo" value={String(projection.confidence.overallPct)} unit="%" icon={Gauge} accent={confidenceAccent} trend="indice heuristico" />
         <KpiCard label="Chuva prevista 72h" value={formatNullable(forecastRain.likely, '')} unit="mm" icon={CloudRain} accent="blue" trend={`${forecastRain.minimum} a ${forecastRain.maximum} mm`} />
         <KpiCard label="Marau / Guapore 72h" value={formatNullable(marauRain?.likely, '')} unit="mm" icon={CloudRain} accent="amber" trend={marauRain ? `${marauRain.minimum} a ${marauRain.maximum} mm` : 'sinal local indisponivel'} />
       </View>
@@ -419,7 +420,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
 
       <View style={styles.scenarioSummaryGrid}>
         <ProjectionScenarioSummary
-          label="P10 / minimo"
+          label="Limite inferior (chuva P10)"
           description={projection.scenarios.minimum.description}
           peak={projection.peaks.minimum}
           color={colors.valleyGreen}
@@ -431,7 +432,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
           color={colors.mucumBlue}
         />
         <ProjectionScenarioSummary
-          label="P90 / maximo"
+          label="Limite superior (chuva P90)"
           description={projection.scenarios.maximum.description}
           peak={projection.peaks.maximum}
           color={colors.danger}
@@ -454,7 +455,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderCopy}>
             <Text style={styles.cardTitle}>Subida prevista hora a hora</Text>
-            <Text style={styles.cardSub}>Nivel e variacao em relacao a hora anterior para minimo, mediana e maximo.</Text>
+            <Text style={styles.cardSub}>Nivel e variacao em relacao a hora anterior para os limites hidrologicos gerados com chuva P10, mediana e P90.</Text>
           </View>
           <TrendingUp color={colors.mucumBlue} size={19} />
         </View>
@@ -462,9 +463,9 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
           <View style={styles.hourlyProjectionTable}>
             <View style={[styles.hourlyProjectionRow, styles.thresholdHeader]}>
               <Text style={[styles.hourlyProjectionCell, styles.hourlyProjectionHour]}>Hora</Text>
-              <Text style={[styles.hourlyProjectionCell, styles.scenarioMinimumText]}>P10 / minimo</Text>
+              <Text style={[styles.hourlyProjectionCell, styles.scenarioMinimumText]}>Inferior / P10</Text>
               <Text style={[styles.hourlyProjectionCell, styles.scenarioLikelyText]}>Mediana</Text>
-              <Text style={[styles.hourlyProjectionCell, styles.scenarioMaximumText]}>P90 / maximo</Text>
+              <Text style={[styles.hourlyProjectionCell, styles.scenarioMaximumText]}>Superior / P90</Text>
               <Text style={styles.hourlyProjectionSpread}>Amplitude</Text>
             </View>
             {projection.timeline.map((point) => (
@@ -493,8 +494,8 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
         </ChartPanel>
         <View style={[styles.projectionConfidencePanel, styles.chartGridCard]}>
           <View style={styles.cardHeaderCopy}>
-            <Text style={styles.cardTitle}>Confianca da rodada</Text>
-            <Text style={styles.cardSub}>A confianca diminui conforme o horizonte e a ausencia de dados.</Text>
+            <Text style={styles.cardTitle}>Qualidade e incerteza da rodada</Text>
+            <Text style={styles.cardSub}>{projection.confidence.interpretation}</Text>
           </View>
           <ConfidenceRow label="Curto prazo" value={projection.confidence.shortTermPct ?? 0} />
           <ConfidenceRow label="Proximas 24h" value={projection.confidence.next24hPct ?? 0} />
@@ -511,7 +512,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderCopy}>
             <Text style={styles.cardTitle}>Horizontes operacionais</Text>
-            <Text style={styles.cardSub}>Leituras pontuais dos tres cenarios e confianca naquele horario.</Text>
+            <Text style={styles.cardSub}>Leituras pontuais dos tres cenarios e indice de qualidade naquele horario.</Text>
           </View>
           <Clock color={colors.mucumBlue} size={19} />
         </View>
@@ -522,7 +523,7 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
               <Text style={styles.horizonLikely}>{formatNullable(point.likelyLevelM, ' m')}</Text>
               <Text style={[styles.horizonDelta, hourlyDeltaStyle(point.likelyLevelDeltaM)]}>{formatHourlyDelta(point.likelyLevelDeltaM)}</Text>
               <Text style={styles.horizonRange}>{point.minimumLevelM} - {point.maximumLevelM} m</Text>
-              <Text style={styles.horizonConfidence}>{point.confidencePct}% confianca</Text>
+              <Text style={styles.horizonConfidence}>{point.confidencePct}% qualidade</Text>
             </View>
           ))}
         </View>
@@ -558,13 +559,14 @@ function ProjectionSection({ projection, isLoading }: { projection: MucumProject
         <Text style={styles.methodText}>
           {projection.model.officialVariant
             ? `${projection.model.officialVariant}: ${projection.model.officialEquation}. `
-            : 'Sem entradas suficientes para aplicar a equacao oficial nesta rodada. '}
+            : 'Sem entradas recentes suficientes para aplicar a equacao SGB publicada em 2014 nesta rodada. '}
           Depois do curto prazo, os cenarios combinam chuva ponderada na area de 16.000 km2, propagacao conceitual, curva-chave de Mucum e GloFAS com peso reduzido.
         </Text>
         <View style={styles.tagRow}>
           <Text style={styles.dataTag}>{projection.drivers.glofasAvailable ? 'GloFAS ativo' : 'GloFAS indisponivel'}</Text>
           <Text style={styles.dataTag}>{projection.drivers.ensembleMembers} membros</Text>
           <Text style={styles.dataTag}>{projection.drivers.basinRainCoveragePct}% da bacia</Text>
+          <Text style={styles.dataTag}>Leitura atual ha {projection.drivers.currentDataAgeHours}h</Text>
           <Text style={styles.dataTag}>Marau/Guapore {projection.drivers.localCriticalRainCoveragePct ?? 0}%</Text>
           <Text style={styles.dataTag}>{projection.drivers.availableUpstreamSignals ?? 0}/4 sinais de afluentes</Text>
         </View>
@@ -771,15 +773,18 @@ function RiversSection({
 
 function DamsSection({ current }: { current: MucumCurrentData | null }) {
   const dams = current?.dams ?? [];
+  const sections = dams.flatMap((dam) => dam.hydrometric_sections ?? []);
+  const availableAlcas = sections.filter((section) => section.key === 'alca' && section.available).length;
+  const availableJusantes = sections.filter((section) => section.key === 'jusante' && section.available).length;
   return (
     <>
       <View style={styles.kpiGrid}>
         <KpiCard label="Barragens" value={String(dams.length)} icon={Database} accent="dark" trend="a montante" />
-        <KpiCard label="Entrada somada" value={formatNullable(sumValues(dams.map((dam) => dam.inflow_m3s)), '')} unit="m3/s" icon={Droplets} accent="blue" trend="leituras disponiveis" />
-        <KpiCard label="Saida somada" value={formatNullable(sumValues(dams.map((dam) => dam.outflow_m3s)), '')} unit="m3/s" icon={Droplets} accent="green" trend="leituras disponiveis" />
+        <KpiCard label="Alcas com leitura" value={String(availableAlcas)} icon={Droplets} accent="blue" trend="secoes ANA separadas" />
+        <KpiCard label="Jusantes com leitura" value={String(availableJusantes)} icon={Droplets} accent="green" trend="secoes ANA separadas" />
         <KpiCard label="Maior reservatorio" value={formatNullable(maxValue(dams.map((dam) => dam.reservoir_level_m)), '')} unit="m" icon={Database} accent="amber" trend="nivel informado" />
       </View>
-      <ChartPanel title="Entrada, saida e reservatorio" subtitle="Comparativo das UHEs monitoradas acima de Mucum" live>
+      <ChartPanel title="Entrada, Alca, Jusante e reservatorio" subtitle="As secoes ANA sao exibidas separadamente e nao sao somadas" live>
         <DamsFlowChart current={current} />
       </ChartPanel>
       <DamsPanel current={current} />
@@ -982,7 +987,9 @@ function DamsPanel({ current }: { current: MucumCurrentData | null }) {
                 </View>
                 <View style={styles.currentGrid}>
                   <MiniReading label="Entrada" value={formatNullable(dam.inflow_m3s, ' m3/s')} />
-                  <MiniReading label="Saida" value={formatNullable(dam.outflow_m3s, ' m3/s')} />
+                  {(dam.hydrometric_sections ?? []).map((section) => (
+                    <DamSectionReading key={section.key} section={section} />
+                  ))}
                   <MiniReading label="Reservatorio" value={formatNullable(dam.reservoir_level_m, ' m')} />
                   <MiniReading label="Vertedouro" value={dam.spillway_status ?? '-'} />
                 </View>
@@ -1299,10 +1306,29 @@ function projectionStatusLabel(status: ProjectionStatus) {
   return 'Abaixo da atencao';
 }
 
+function DamSectionReading({
+  section,
+}: {
+  section: MucumCurrentData['dams'][number]['hydrometric_sections'][number];
+}) {
+  return (
+    <View style={styles.miniReading}>
+      <Text style={styles.metricLabel}>{section.label}</Text>
+      <Text style={styles.miniReadingValue}>{formatNullable(section.flow_m3s, ' m3/s')}</Text>
+      <Text style={styles.currentMeta}>
+        {section.station_code ?? 'Sem estacao ANA'}{section.measured_at ? ` - ${formatMeasuredAt(section.measured_at)}` : ''}
+      </Text>
+      {section.note ? <Text style={styles.currentMeta}>{section.note}</Text> : null}
+    </View>
+  );
+}
+
 function projectionVerificationLabel(status: string) {
-  if (status === 'sem_historico_de_previsoes_suficiente_para_validacao_operacional') {
-    return 'As rodadas estao sendo armazenadas. Ainda nao ha pares projetado-observado suficientes para calcular erro medio e cobertura da faixa; os picos historicos, sozinhos, nao comprovam o acerto do modelo.';
-  }
+  if (status === 'coletando_historico_de_previsoes') return 'As rodadas estao sendo armazenadas, mas ainda nao ha pares projetado-observado suficientes para calcular erro medio e cobertura da faixa.';
+  if (status === 'tabela_de_rodadas_nao_instalada') return 'A tabela de historico de rodadas ainda nao foi instalada no Supabase. Sem ela, nao e possivel medir o acerto projetado x observado.';
+  if (status === 'armazenamento_de_rodadas_nao_configurado') return 'O armazenamento de rodadas nao esta configurado. A validacao projetado x observado ainda nao pode ser calculada.';
+  if (status === 'falha_ao_armazenar_rodada') return 'A rodada atual nao foi armazenada; verifique a conexao com o Supabase antes de usar metricas de acerto.';
+  if (status === 'aguardando_persistencia_da_rodada') return 'A rodada ainda nao teve a persistencia confirmada.';
   return status.replaceAll('_', ' ');
 }
 
@@ -1583,6 +1609,11 @@ function historicalDifferenceShortLabel(projectedLevelM: number, historicalLevel
 function formatSignedMeters(value: number) {
   const prefix = value > 0 ? '+' : '';
   return `${prefix}${value.toFixed(2)} m`;
+}
+
+function formatSignedNumber(value: number) {
+  const prefix = value > 0 ? '+' : '';
+  return `${prefix}${value.toFixed(2)}`;
 }
 
 function hourlyDeltaStyle(value: number | null | undefined) {

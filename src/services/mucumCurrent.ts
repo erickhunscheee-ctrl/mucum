@@ -49,6 +49,17 @@ export type MucumCurrentData = {
     spillway_status: string | null;
     source: string | null;
     raw_payload?: unknown;
+    hydrometric_sections: {
+      key: 'alca' | 'jusante';
+      label: string;
+      station_code: string | null;
+      station_name: string | null;
+      flow_m3s: number | null;
+      river_level_m: number | null;
+      measured_at: string | null;
+      available: boolean;
+      note: string | null;
+    }[];
   }[];
   regionalRainfall: {
     basinName: string;

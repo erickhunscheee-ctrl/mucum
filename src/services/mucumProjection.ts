@@ -78,6 +78,8 @@ export type MucumProjectionData = {
       meteorologyPct: number;
       basinCoveragePct: number;
     };
+    metric: string;
+    interpretation: string;
     verificationStatus: string;
   };
   scenarios: Record<'minimum' | 'likely' | 'maximum', { label: string; description: string }>;
@@ -108,9 +110,13 @@ export type MucumProjectionData = {
     basinRainCoveragePct: number;
     runoffCoefficients: { minimum: number; likely: number; maximum: number };
     stageTrendMPerHour: number;
+    recentStageTrendMPerHour: number;
     flowTrendM3sPerHour: number;
+    currentDataAgeHours: number;
     linhaJoseJulioFlowM3s: number | null;
+    linhaJoseJulioMeasuredAt: string | null;
     uhe14JulhoOutflowM3s: number | null;
+    uhe14JulhoMeasuredAt: string | null;
     upstreamSignals: {
       stationCode: string;
       stationName: string;
@@ -118,6 +124,8 @@ export type MucumProjectionData = {
       levelM: number | null;
       flowM3s: number | null;
       measuredAt: string | null;
+      ageHours: number | null;
+      fresh: boolean;
       available: boolean;
     }[];
     availableUpstreamSignals: number;

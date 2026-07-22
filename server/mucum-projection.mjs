@@ -1,6 +1,9 @@
 const HOUR_MS = 60 * 60 * 1000;
 const PROJECTION_HOURS = 72;
 const MUCUM_DRAINAGE_AREA_KM2 = 16000;
+const MAX_CURRENT_DATA_AGE_HOURS = 12;
+const MAX_OFFICIAL_INPUT_AGE_HOURS = 2;
+const MUCUM_RATING_CURVE_MAX_M = 20;
 
 export const MUCUM_RAIN_GAUGES = [
   { key: 'sao_jose_ausentes', city: 'Sao Jose dos Ausentes', weight: 0.05 },
@@ -74,29 +77,38 @@ export function calculateMucumProjection({
   );
   const currentLevelM = finiteNumber(current.river?.currentLevelM)
     ?? latestMetricValue(mucumReadings, 'riverLevelM');
-  const measuredCurrentFlow = finiteNumber(current.river?.currentFlowM3s)
-    ?? latestMetricValue(mucumReadings, 'flowM3s');
+  const currentDataAgeHours = hoursBetween(baseTime, generatedAt);
+  if (currentDataAgeHours < -0.5) {
+    throw new Error('Horario do nivel de Mucum esta no futuro em relacao a geracao da rodada; verifique o fuso da telemetria.');
+  }
+  if (currentDataAgeHours > MAX_CURRENT_DATA_AGE_HOURS) {
+    throw new Error(`Nivel de Mucum desatualizado ha ${round(currentDataAgeHours, 1)} horas; a projecao nao sera recalculada.`);
+  }
+  const currentFlowMetric = latestMetric(mucumReadings, 'flowM3s');
+  const riverFlowMeasuredAt = current.river?.flowMeasuredAt ?? currentFlowMetric?.measuredAt;
+  const measuredCurrentFlow = timestampWithinHours(riverFlowMeasuredAt, baseTime, 1)
+    ? finiteNumber(current.river?.currentFlowM3s) ?? currentFlowMetric?.value ?? null
+    : null;
   const currentFlowM3s = measuredCurrentFlow ?? dischargeFromMucumStage(currentLevelM);
 
   if (currentLevelM === null || currentFlowM3s === null) {
     throw new Error('A projecao requer ao menos nivel e vazao atuais de Mucum, medidos ou derivados pela curva-chave.');
   }
 
-  const flowAt4hAgo = metricNearHoursAgo(mucumReadings, 'flowM3s', baseTime, 4)
-    ?? dischargeFromMucumStage(metricNearHoursAgo(mucumReadings, 'riverLevelM', baseTime, 4));
-  const flowAt6hAgo = metricNearHoursAgo(mucumReadings, 'flowM3s', baseTime, 6)
-    ?? dischargeFromMucumStage(metricNearHoursAgo(mucumReadings, 'riverLevelM', baseTime, 6));
-  const linhaReading = latestReading(stationRows(readings, '86472000'));
+  const flowAt4hAgo = metricNearHoursAgo(mucumReadings, 'flowM3s', baseTime, 4, 1)
+    ?? dischargeFromMucumStage(metricNearHoursAgo(mucumReadings, 'riverLevelM', baseTime, 4, 1));
+  const flowAt6hAgo = metricNearHoursAgo(mucumReadings, 'flowM3s', baseTime, 6, 1)
+    ?? dischargeFromMucumStage(metricNearHoursAgo(mucumReadings, 'riverLevelM', baseTime, 6, 1));
+  const linhaReading = latestFreshReading(stationRows(readings, '86472000'), baseTime);
   const linhaFlowM3s = finiteNumber(linhaReading?.flowM3s)
     ?? dischargeFromLinhaJoseJulioStage(linhaReading?.riverLevelM);
-  const dam14July = (current.dams ?? []).find((dam) => normalize(dam.dam_name).includes('14 DE JULHO'));
-  const uheReading = latestReading(stationRows(readings, '86471000'));
-  const uheOutflowM3s = finiteNumber(dam14July?.outflow_m3s) ?? finiteNumber(uheReading?.flowM3s);
+  const uheReading = latestFreshReading(stationRows(readings, '86471000'), baseTime);
+  const uheOutflowM3s = finiteNumber(uheReading?.flowM3s);
   const upstreamSignals = [
-    stationSignal(readings, '86160000', 'Passo Tainhas', 'Rio Tainhas'),
-    stationSignal(readings, '86410000', 'Passo Barra do Guaiaveira', 'Rio Turvo'),
-    stationSignal(readings, '86500000', 'Passo Carreiro', 'Rio Carreiro'),
-    stationSignal(readings, '86580000', 'Santa Lucia', 'Rio Guapore'),
+    stationSignal(readings, '86160000', 'Passo Tainhas', 'Rio Tainhas', baseTime),
+    stationSignal(readings, '86410000', 'Passo Barra do Guaiaveira', 'Rio Turvo', baseTime),
+    stationSignal(readings, '86500000', 'Passo Carreiro', 'Rio Carreiro', baseTime),
+    stationSignal(readings, '86580000', 'Santa Lucia', 'Rio Guapore', baseTime),
   ];
   const availableUpstreamSignals = upstreamSignals.filter((signal) => signal.available).length;
   const official = officialShortTermProjection({
@@ -113,6 +125,7 @@ export function calculateMucumProjection({
   );
   const stageTrendMPerHour = observedTrend(mucumReadings, 'riverLevelM', baseTime, 6, 0.75);
   const flowTrendM3sPerHour = observedTrend(mucumReadings, 'flowM3s', baseTime, 6, 1200);
+  const recentStageTrendMPerHour = observedTrend(mucumReadings, 'riverLevelM', baseTime, 1, 2.5);
   const observedRain = observedBasinRain(current);
   const rainScenarios = basinRainScenarios(ensemble, forecast);
   const localCriticalRainScenarios = basinRainScenarios(ensemble, forecast, MUCUM_LOCAL_CRITICAL_RAIN_GAUGES);
@@ -159,7 +172,10 @@ export function calculateMucumProjection({
       stageTrendMPerHour,
       currentLevelM,
     });
-    const modelError = official && hour <= official.leadHours ? 0.14 : 0.20 + (hour / PROJECTION_HOURS) * 0.12;
+    const conceptualModelError = 0.20 + (hour / PROJECTION_HOURS) * 0.12;
+    const modelError = official
+      ? lerp(0.14, conceptualModelError, clamp((hour - official.leadHours) / 12, 0, 1))
+      : conceptualModelError;
     const conceptual = {
       minimum: Math.max(0, baseFlow * (1 - modelError) + (runoff.minimum[hour] ?? 0)),
       likely: Math.max(0, baseFlow + (runoff.likely[hour] ?? 0)),
@@ -232,6 +248,8 @@ export function calculateMucumProjection({
     official,
     freshnessScore,
     damSignals,
+    recentStageTrendMPerHour,
+    ratingCurveExtrapolated: peaks.maximum.levelM > MUCUM_RATING_CURVE_MAX_M,
   });
   const shortTermHour = official?.leadHours ?? 6;
 
@@ -247,8 +265,8 @@ export function calculateMucumProjection({
     },
     model: {
       name: 'Hydro Mucum Hibrido',
-      version: '1.2.0',
-      status: official ? 'oficial_curto_prazo_com_cenarios_experimentais' : 'experimental_sem_equacao_oficial_disponivel',
+      version: '1.3.0',
+      status: official ? 'equacao_sgb_2014_curto_prazo_com_cenarios_experimentais' : 'experimental_sem_equacao_sgb_2014_disponivel',
       officialLeadHours: official?.leadHours ?? null,
       officialVariant: official?.variant ?? null,
       officialEquation: official?.equation ?? null,
@@ -261,6 +279,7 @@ export function calculateMucumProjection({
         'A equacao publicada pelo SGB sustenta principalmente as primeiras 4 a 6 horas.',
         'Os cenarios de 6 a 72 horas usam chuva-vazao conceitual e devem ser recalibrados com eventos historicos locais.',
         'A curva-chave e as vazoes de barragens podem mudar; valide versoes e leituras com SGB e operadores.',
+        'A curva-chave publicada para Mucum e documentada ate 20 m; valores superiores sao extrapolacoes de alta incerteza.',
         'O GloFAS possui resolucao aproximada de 5 km e entra apenas como sinal independente de baixa ponderacao.',
         'A chuva de Marau/Capingui representa risco local do Guapore e nao e convertida diretamente em nivel de Mucum sem calibracao de remanso.',
         'Os limiares de vazao das UHEs e a margem de evacuacao do plano municipal sao referencias operacionais e nao ordens automaticas.',
@@ -275,8 +294,8 @@ export function calculateMucumProjection({
       confidencePct: operationalPoint.confidencePct,
       confidenceLabel: operationalPoint.confidenceLabel,
       basis: official
-        ? 'Equacao SGB no curto prazo, tendencia observada e chuva ensemble ponderada na bacia.'
-        : 'Tendencia observada e chuva ensemble ponderada na bacia; equacao SGB indisponivel nesta rodada.',
+        ? 'Equacao de propagacao publicada pelo SGB em 2014 no curto prazo, tendencia observada e chuva ensemble ponderada na bacia.'
+        : 'Tendencia observada e chuva ensemble ponderada na bacia; equacao SGB 2014 indisponivel nesta rodada.',
     },
     operationalGuidance: {
       observedMonitoringCadenceMinutes: monitoringCadenceMinutes(currentLevelM),
@@ -296,7 +315,9 @@ export function calculateMucumProjection({
         meteorologyPct: meteorologyScore,
         basinCoveragePct: coverageScore,
       },
-      verificationStatus: 'sem_historico_de_previsoes_suficiente_para_validacao_operacional',
+      metric: 'indice_heuristico_de_qualidade_das_entradas',
+      interpretation: 'Este percentual nao e probabilidade de acerto. Resume atualidade, disponibilidade e cobertura das entradas.',
+      verificationStatus: 'aguardando_persistencia_da_rodada',
     },
     scenarios: {
       minimum: { label: 'Minimo', description: 'Chuva P10, menor escoamento e limite inferior hidrologico.' },
@@ -324,9 +345,13 @@ export function calculateMucumProjection({
       basinRainCoveragePct: coverageScore,
       runoffCoefficients,
       stageTrendMPerHour: round(stageTrendMPerHour, 3),
+      recentStageTrendMPerHour: round(recentStageTrendMPerHour, 3),
       flowTrendM3sPerHour: round(flowTrendM3sPerHour, 1),
+      currentDataAgeHours: round(currentDataAgeHours, 2),
       linhaJoseJulioFlowM3s: round(linhaFlowM3s),
+      linhaJoseJulioMeasuredAt: linhaReading?.measuredAt ?? null,
       uhe14JulhoOutflowM3s: round(uheOutflowM3s),
+      uhe14JulhoMeasuredAt: uheReading?.measuredAt ?? null,
       upstreamSignals,
       availableUpstreamSignals,
       damSignals,
@@ -349,7 +374,7 @@ function officialShortTermProjection({ linhaFlowM3s, uheOutflowM3s, flowAt4hAgo,
   if (linhaFlowM3s !== null && flowAt4hAgo !== null) {
     return {
       leadHours: 4,
-      variant: 'SGB Linha Jose Julio',
+      variant: 'SGB 2014 - Linha Jose Julio',
       equation: 'Qmucum(t+4) = 1.45 * Qlinha(t) - 0.20 * Qmucum(t-4) + 190',
       flowM3s: clamp(1.45 * linhaFlowM3s - 0.20 * flowAt4hAgo + 190, 0, 30000),
     };
@@ -358,7 +383,7 @@ function officialShortTermProjection({ linhaFlowM3s, uheOutflowM3s, flowAt4hAgo,
   if (uheOutflowM3s !== null && flowAt6hAgo !== null) {
     return {
       leadHours: 6,
-      variant: 'SGB UHE 14 de Julho',
+      variant: 'SGB 2014 - UHE 14 de Julho',
       equation: 'Qmucum(t+6) = 1.45 * Qusina(t) - 0.20 * Qmucum(t-6) + 190',
       flowM3s: clamp(1.45 * uheOutflowM3s - 0.20 * flowAt6hAgo + 190, 0, 30000),
     };
@@ -625,7 +650,7 @@ function confidenceLabel(value) {
   return 'baixa';
 }
 
-function buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRain, rainScenarios, official, freshnessScore, damSignals = [] }) {
+function buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRain, rainScenarios, official, freshnessScore, damSignals = [], recentStageTrendMPerHour = 0, ratingCurveExtrapolated = false }) {
   const alerts = [];
   const inundation = thresholdCrossings.find((item) => item.key === 'inundation');
   const alert = thresholdCrossings.find((item) => item.key === 'alert');
@@ -640,6 +665,12 @@ function buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRa
 
   const observed3dMm = observedRain.last3dMm;
   const forecast72hMm = sum(rainScenarios.likely.slice(0, 72));
+
+  if (recentStageTrendMPerHour >= 1) {
+    alerts.push({ severity: 'critical', title: 'Subida muito rapida observada em Mucum', detail: `O nivel variou cerca de +${round(recentStageTrendMPerHour, 2)} m/h na ultima hora. Confirme as proximas leituras de 15 minutos e acompanhe o boletim oficial.` });
+  } else if (recentStageTrendMPerHour >= 0.5) {
+    alerts.push({ severity: 'warning', title: 'Subida rapida observada em Mucum', detail: `O nivel variou cerca de +${round(recentStageTrendMPerHour, 2)} m/h na ultima hora. O ritmo recente e mostrado separadamente da tendencia suavizada usada na projecao.` });
+  }
 
   if (observed3dMm >= 90) {
     alerts.push({ severity: 'critical', title: 'Chuva observada em faixa historicamente severa', detail: `${round(observed3dMm)} mm observados nos ultimos 3 dias. No estudo do SGB, eventos acima de 15 m tiveram ao menos 90 mm/3d.` });
@@ -665,10 +696,13 @@ function buildProjectionAlerts({ timeline, peaks, thresholdCrossings, observedRa
   }
 
   if (!official) {
-    alerts.push({ severity: 'info', title: 'Equacao oficial de curto prazo indisponivel', detail: 'Faltam vazoes recentes da Linha Jose Julio/UHE 14 de Julho ou o historico de Mucum.' });
+    alerts.push({ severity: 'info', title: 'Equacao SGB 2014 de curto prazo indisponivel', detail: 'Faltam vazoes recentes da Linha Jose Julio/UHE 14 de Julho ou o historico de Mucum.' });
   }
   if (freshnessScore < 65) {
     alerts.push({ severity: 'warning', title: 'Dados hidrologicos desatualizados', detail: 'A confianca foi reduzida pela idade das leituras atuais.' });
+  }
+  if (ratingCurveExtrapolated) {
+    alerts.push({ severity: 'warning', title: 'Cenario superior extrapola a curva-chave documentada', detail: `A curva publicada para Mucum e documentada ate ${MUCUM_RATING_CURVE_MAX_M} m. Valores acima disso possuem incerteza adicional e exigem confirmacao pelo SGB.` });
   }
   if (!alerts.length) {
     alerts.push({ severity: 'normal', title: 'Sem cruzamento projetado das cotas criticas', detail: `Pico provavel atual: ${round(peaks.likely.levelM)} m. Continue acompanhando novas rodadas.` });
@@ -698,9 +732,11 @@ function addHourlyLevelDeltas(timeline) {
   });
 }
 
-function stationSignal(readings, stationCode, stationName, river) {
+function stationSignal(readings, stationCode, stationName, river, baseTime) {
   const rows = stationRows(readings, stationCode);
   const latest = latestReading(rows);
+  const ageHours = latest?.measuredAt ? hoursBetween(latest.measuredAt, baseTime) : null;
+  const fresh = latest ? readingIsFresh(latest, baseTime, 3) : false;
   return {
     stationCode,
     stationName,
@@ -708,7 +744,9 @@ function stationSignal(readings, stationCode, stationName, river) {
     levelM: round(latest?.riverLevelM),
     flowM3s: round(latest?.flowM3s),
     measuredAt: latest?.measuredAt ?? null,
-    available: Boolean(latest && (finiteNumber(latest.riverLevelM) !== null || finiteNumber(latest.flowM3s) !== null)),
+    ageHours: round(ageHours, 2),
+    fresh,
+    available: Boolean(fresh && (finiteNumber(latest?.riverLevelM) !== null || finiteNumber(latest?.flowM3s) !== null)),
   };
 }
 
@@ -784,12 +822,12 @@ function latestMetric(readings, key) {
   return row ? { value: finiteNumber(row[key]), measuredAt: row.measuredAt } : null;
 }
 
-function metricNearHoursAgo(readings, key, baseTime, hours) {
+function metricNearHoursAgo(readings, key, baseTime, hours, toleranceHours = 3) {
   const target = Date.parse(baseTime) - hours * HOUR_MS;
   const candidates = readings
     .filter((reading) => finiteNumber(reading[key]) !== null && Number.isFinite(Date.parse(reading.measuredAt)))
     .map((reading) => ({ reading, distance: Math.abs(Date.parse(reading.measuredAt) - target) }))
-    .filter((item) => item.distance <= 3 * HOUR_MS)
+    .filter((item) => item.distance <= toleranceHours * HOUR_MS)
     .sort((left, right) => left.distance - right.distance);
   return candidates.length ? finiteNumber(candidates[0].reading[key]) : null;
 }
@@ -827,6 +865,29 @@ function quantileTrajectory(series, probability) {
   return Array.from({ length: PROJECTION_HOURS }, (_, hour) => (
     lerp(ordered[lower][hour] ?? 0, ordered[upper][hour] ?? ordered[lower][hour] ?? 0, ratio)
   ));
+}
+
+function latestFreshReading(readings, baseTime, maxAgeHours = MAX_OFFICIAL_INPUT_AGE_HOURS) {
+  const latest = latestReading(readings);
+  return latest && readingIsFresh(latest, baseTime, maxAgeHours) ? latest : null;
+}
+
+function readingIsFresh(reading, baseTime, maxAgeHours) {
+  if (!reading?.measuredAt) return false;
+  const ageHours = hoursBetween(reading.measuredAt, baseTime);
+  return Number.isFinite(ageHours) && ageHours >= -0.5 && ageHours <= maxAgeHours;
+}
+
+function timestampWithinHours(value, reference, maxDifferenceHours) {
+  if (!value || !reference) return false;
+  return Math.abs(hoursBetween(value, reference)) <= maxDifferenceHours;
+}
+
+function hoursBetween(earlier, later) {
+  const earlierTime = Date.parse(earlier);
+  const laterTime = Date.parse(later);
+  if (!Number.isFinite(earlierTime) || !Number.isFinite(laterTime)) return Number.POSITIVE_INFINITY;
+  return (laterTime - earlierTime) / HOUR_MS;
 }
 
 function namesMatch(left, right) {

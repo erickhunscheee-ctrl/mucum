@@ -29,7 +29,7 @@ const current = {
     levelMeasuredAt: base.toISOString(),
     flowMeasuredAt: base.toISOString(),
   },
-  dams: [{ dam_name: 'UHE 14 de Julho', outflow_m3s: 1100 }],
+  dams: [{ dam_name: 'UHE 14 de Julho', outflow_m3s: 5000, measured_at: base.toISOString() }],
   regionalRainfall: {
     avgMm: 34,
     cities: MUCUM_RAIN_GAUGES.map((gauge) => ({
@@ -46,6 +46,12 @@ const current = {
     mucumReading(4, 4.25),
     mucumReading(2, 4.45),
     mucumReading(0, 4.7),
+    {
+      stationCode: '86471000',
+      stationName: 'UHE 14 DE JULHO',
+      measuredAt: base.toISOString(),
+      flowM3s: 1100,
+    },
   ],
 };
 
@@ -91,6 +97,11 @@ assert.equal(
   Number((result.timeline[1].likelyLevelM - result.timeline[0].likelyLevelM).toFixed(2)),
 );
 assert.equal(result.model.officialLeadHours, 6);
+assert.equal(result.model.officialVariant, 'SGB 2014 - UHE 14 de Julho');
+assert.notEqual(result.model.officialProjectedFlowM3s, 1.45 * current.dams[0].outflow_m3s);
+assert.equal(result.drivers.uhe14JulhoOutflowM3s, 1100);
+assert.ok(result.drivers.recentStageTrendMPerHour > 0);
+assert.ok(result.timeline[7].minimumLevelDeltaM > -0.25, 'A transicao apos a equacao oficial nao deve criar queda brusca no cenario minimo.');
 assert.equal(result.thresholdCrossings.map((item) => item.levelM).join(','), '5,9,18');
 assert.ok(result.confidence.shortTermPct > result.confidence.next72hPct);
 assert.equal(result.operationalEstimate.levelM, result.peaks.likely.levelM);
@@ -105,6 +116,76 @@ result.timeline.forEach((row) => {
   assert.ok(row.minimumLevelM <= row.likelyLevelM);
   assert.ok(row.likelyLevelM <= row.maximumLevelM);
 });
+
+const mismatchedFlowResult = calculateMucumProjection({
+  current: {
+    ...current,
+    river: {
+      ...current.river,
+      currentFlowM3s: 99999,
+      flowMeasuredAt: isoHoursAgo(2),
+    },
+  },
+  forecast,
+  ensemble,
+  generatedAt: base.toISOString(),
+});
+assert.equal(mismatchedFlowResult.current.flowM3s, Number(dischargeFromMucumStage(current.river.currentLevelM).toFixed(2)));
+
+const staleOfficialResult = calculateMucumProjection({
+  current: {
+    ...current,
+    stationReadings: current.stationReadings
+      .filter((reading) => reading.stationCode !== '86471000')
+      .concat({
+        stationCode: '86471000',
+        stationName: 'UHE 14 DE JULHO',
+        measuredAt: isoHoursAgo(3),
+        flowM3s: 5000,
+      }),
+  },
+  forecast,
+  ensemble,
+  generatedAt: base.toISOString(),
+});
+assert.equal(staleOfficialResult.model.officialLeadHours, null);
+assert.equal(staleOfficialResult.drivers.uhe14JulhoOutflowM3s, null);
+
+const rapidRiseResult = calculateMucumProjection({
+  current: {
+    ...current,
+    river: {
+      ...current.river,
+      currentLevelM: 5.5,
+      currentFlowM3s: dischargeFromMucumStage(5.5),
+    },
+    stationReadings: [
+      mucumReading(1, 4.1),
+      mucumReading(0.5, 4.6),
+      mucumReading(0, 5.5),
+      ...current.stationReadings.filter((reading) => reading.stationCode !== '86510000'),
+    ],
+  },
+  forecast,
+  ensemble,
+  generatedAt: base.toISOString(),
+});
+assert.ok(rapidRiseResult.drivers.recentStageTrendMPerHour >= 1);
+assert.ok(rapidRiseResult.alerts.some((alert) => alert.title === 'Subida muito rapida observada em Mucum'));
+
+assert.throws(() => calculateMucumProjection({
+  current: {
+    ...current,
+    river: {
+      ...current.river,
+      levelMeasuredAt: isoHoursAgo(13),
+      flowMeasuredAt: isoHoursAgo(13),
+    },
+  },
+  forecast,
+  ensemble,
+  generatedAt: base.toISOString(),
+}), /desatualizado/);
 
 const flowAtNineMeters = dischargeFromMucumStage(9);
 assert.ok(flowAtNineMeters);
@@ -132,6 +213,49 @@ const wetResult = calculateMucumProjection({
 
 assert.ok(wetResult.alerts.some((alert) => alert.title === 'Chuva observada em faixa historicamente severa'));
 assert.ok(wetResult.alerts.every((alert) => !alert.detail.includes('observados e previstos')));
+
+const extremeEnsemble = {
+  points: ensemble.points.map((point) => ({
+    ...point,
+    payload: {
+      hourly: Object.fromEntries(Object.keys(point.payload.hourly).map((key, index) => [
+        key,
+        Array.from({ length: 72 }, (_, hour) => hour < 24 ? 4 + index * 2 : 0),
+      ])),
+    },
+  })),
+};
+const extremeResult = calculateMucumProjection({
+  current,
+  forecast,
+  ensemble: extremeEnsemble,
+  generatedAt: base.toISOString(),
+});
+validateProjection(extremeResult);
+if (extremeResult.peaks.maximum.levelM > 20) {
+  assert.ok(extremeResult.alerts.some((alert) => alert.title.includes('extrapola a curva-chave')));
+}
+
+[0.6, 2, 5, 9, 18, 20].forEach((levelM) => {
+  const flowM3s = dischargeFromMucumStage(levelM);
+  assert.ok(flowM3s !== null && flowM3s >= 0);
+  assert.ok(Math.abs((stageFromMucumDischarge(flowM3s) ?? 0) - levelM) < 0.01);
+});
+
+function validateProjection(projection) {
+  assert.equal(projection.timeline.length, 73);
+  assert.equal(projection.timeline[0].minimumLevelM, projection.current.levelM);
+  assert.equal(projection.timeline[0].likelyLevelM, projection.current.levelM);
+  assert.equal(projection.timeline[0].maximumLevelM, projection.current.levelM);
+  projection.timeline.forEach((row) => {
+    [row.minimumLevelM, row.likelyLevelM, row.maximumLevelM, row.minimumFlowM3s, row.likelyFlowM3s, row.maximumFlowM3s]
+      .forEach((value) => assert.ok(Number.isFinite(value) && value >= 0));
+    assert.ok(row.minimumLevelM <= row.likelyLevelM);
+    assert.ok(row.likelyLevelM <= row.maximumLevelM);
+    assert.ok(row.minimumFlowM3s <= row.likelyFlowM3s);
+    assert.ok(row.likelyFlowM3s <= row.maximumFlowM3s);
+  });
+}
 
 console.log(JSON.stringify({
   status: 'ok',

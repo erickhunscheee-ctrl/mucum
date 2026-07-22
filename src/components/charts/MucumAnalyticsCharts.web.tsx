@@ -448,7 +448,7 @@ export function HistoricalFloodRiseChart({ historical }: { historical: MucumHist
 
 export function HistoricalDamFlowChart({ event }: { event: HistoricalFloodEvent | null }) {
   const data = useMemo(() => {
-    const hours = Array.from({ length: 37 }, (_, index) => -96 + index * 3);
+    const hours = Array.from({ length: 109 }, (_, index) => -96 + index);
     const damColors = [colors.mucumBlue, colors.warning, colors.valleyGreen];
     return {
       labels: hours.map((hour) => hour === 0 ? 'Pico em Mucum' : `${hour}h`),
@@ -551,8 +551,16 @@ export function DamsFlowChart({ current }: CurrentChartProps) {
       },
       {
         type: 'bar' as const,
-        label: 'Saida (m3/s)',
-        data: (current?.dams ?? []).map((dam) => dam.outflow_m3s),
+        label: 'Alca ANA (m3/s)',
+        data: (current?.dams ?? []).map((dam) => (dam.hydrometric_sections ?? []).find((section) => section.key === 'alca')?.flow_m3s ?? null),
+        backgroundColor: colors.bridgeGold,
+        borderRadius: 4,
+        yAxisID: 'flow',
+      },
+      {
+        type: 'bar' as const,
+        label: 'Jusante ANA (m3/s)',
+        data: (current?.dams ?? []).map((dam) => (dam.hydrometric_sections ?? []).find((section) => section.key === 'jusante')?.flow_m3s ?? null),
         backgroundColor: chartColors.level,
         borderRadius: 4,
         yAxisID: 'flow',

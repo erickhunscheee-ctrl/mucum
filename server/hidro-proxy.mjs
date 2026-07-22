@@ -78,22 +78,34 @@ const DAM_TELEMETRY_CONFIGS = [
     damName: 'UHE Castro Alves',
     inflowCodes: ['86298000'],
     reservoirCode: '86305000',
-    outflowCodes: ['86305000', '86306000'],
+    outflowCodes: [],
     stationCodes: ['86298000', '86305000', '86306000'],
+    sections: [
+      { key: 'alca', label: 'Alca', stationCode: '86306000', stationName: 'UHE Castro Alves Alca' },
+      { key: 'jusante', label: 'Jusante', stationCode: null, stationName: null, note: 'Sem estacao ANA de jusante total configurada.' },
+    ],
   },
   {
     damName: 'UHE Monte Claro',
     inflowCodes: ['86448000'],
     reservoirCode: '86448000',
-    outflowCodes: ['86450000', '86450500'],
+    outflowCodes: ['86450500'],
     stationCodes: ['86448000', '86450000', '86450500'],
+    sections: [
+      { key: 'alca', label: 'Alca', stationCode: '86450000', stationName: 'UHE Monte Claro Jusante 1 (Alca)' },
+      { key: 'jusante', label: 'Jusante', stationCode: '86450500', stationName: 'UHE Monte Claro Jusante 2' },
+    ],
   },
   {
     damName: 'UHE 14 de Julho',
     inflowCodes: ['86451000'],
     reservoirCode: '86470800',
-    outflowCodes: ['86470900', '86471000'],
+    outflowCodes: ['86471000'],
     stationCodes: ['86451000', '86470800', '86470900', '86471000'],
+    sections: [
+      { key: 'alca', label: 'Alca', stationCode: '86470900', stationName: 'UHE 14 de Julho Alca' },
+      { key: 'jusante', label: 'Jusante', stationCode: '86471000', stationName: 'UHE 14 de Julho Jusante' },
+    ],
   },
 ];
 const HISTORICAL_FLOOD_WINDOWS = [
@@ -605,7 +617,7 @@ async function buildMucumForecast() {
   url.searchParams.set('latitude', FORECAST_POINTS.map((point) => point.latitude).join(','));
   url.searchParams.set('longitude', FORECAST_POINTS.map((point) => point.longitude).join(','));
   url.searchParams.set('hourly', 'precipitation,precipitation_probability,rain,weather_code');
-  url.searchParams.set('forecast_days', '7');
+  url.searchParams.set('forecast_hours', '168');
   url.searchParams.set('timezone', 'America/Sao_Paulo');
   url.searchParams.set('timeformat', 'iso8601');
   url.searchParams.set('precipitation_unit', 'mm');
@@ -727,7 +739,7 @@ async function buildMucumProjection(forceRefresh = false) {
     glofas,
     projectionReadings,
   });
-  await saveHydrologicalProjectionRun(projection);
+  projection.confidence.verificationStatus = await saveHydrologicalProjectionRun(projection);
   return projection;
 }
 
@@ -736,7 +748,7 @@ async function fetchProjectionTelemetry() {
   const payload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
     Codigos_Estacoes: codes.join(','),
     'Tipo Filtro Data': 'DATA_LEITURA',
-    'Data de Busca (yyyy-MM-dd)': formatDate(new Date()),
+    'Data de Busca (yyyy-MM-dd)': currentSaoPauloDate(),
     'Range Intervalo de busca': 'DIAS_2',
   });
 
@@ -801,14 +813,21 @@ async function buildMucumHistoricalFloods() {
     return cachedHistoricalFloods;
   }
 
-  const events = await Promise.all(HISTORICAL_FLOOD_WINDOWS.map(async (event) => {
-    const payload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
-      Codigos_Estacoes: ['86510000', ...HISTORICAL_DAM_FLOW_STATIONS.map((station) => station.stationCode)].join(','),
+  const events = [];
+  for (const event of HISTORICAL_FLOOD_WINDOWS) {
+    const levelPayload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
+      Codigos_Estacoes: '86510000',
       'Tipo Filtro Data': 'DATA_LEITURA',
       'Data de Busca (yyyy-MM-dd)': event.searchDate,
       'Range Intervalo de busca': 'DIAS_7',
     });
-    const rawItems = normalizeItems(payload.items);
+    const damPayload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
+      Codigos_Estacoes: HISTORICAL_DAM_FLOW_STATIONS.map((station) => station.stationCode).join(','),
+      'Tipo Filtro Data': 'DATA_LEITURA',
+      'Data de Busca (yyyy-MM-dd)': event.searchDate,
+      'Range Intervalo de busca': 'DIAS_7',
+    });
+    const rawItems = [...normalizeItems(levelPayload.items), ...normalizeItems(damPayload.items)];
     const readings = rawItems
       .filter((item) => String(item.codigoestacao) === '86510000')
       .map((item) => ({
@@ -841,32 +860,33 @@ async function buildMucumHistoricalFloods() {
         }))
         .filter((item) => item.time && Number.isFinite(item.flowM3s) && item.flowM3s >= 0)
         .sort((left, right) => new Date(left.time).getTime() - new Date(right.time).getTime());
-      const maximum = flowReadings.length
-        ? flowReadings.reduce((highest, reading) => reading.flowM3s > highest.flowM3s ? reading : highest, flowReadings[0])
-        : null;
       const hourlyFlows = new Map();
       flowReadings.forEach((reading) => {
         const rawOffset = (new Date(reading.time).getTime() - peakTime) / (60 * 60 * 1000);
         const hourFromFloodPeak = Math.round(rawOffset);
         if (hourFromFloodPeak < -96 || hourFromFloodPeak > 12) return;
         const existing = hourlyFlows.get(hourFromFloodPeak);
-        if (!existing || Math.abs(rawOffset - hourFromFloodPeak) < existing.distance) {
+        if (!existing || reading.flowM3s > existing.flowM3s) {
           hourlyFlows.set(hourFromFloodPeak, { hourFromFloodPeak, time: reading.time, flowM3s: reading.flowM3s, distance: Math.abs(rawOffset - hourFromFloodPeak) });
         }
       });
+      const displayedPoints = [...hourlyFlows.values()]
+        .sort((left, right) => left.hourFromFloodPeak - right.hourFromFloodPeak)
+        .map(({ distance, ...point }) => point);
+      const maximum = displayedPoints.length
+        ? displayedPoints.reduce((highest, reading) => reading.flowM3s > highest.flowM3s ? reading : highest, displayedPoints[0])
+        : null;
 
       return {
         ...station,
         availableReadings: flowReadings.length,
         maximumFlowM3s: maximum?.flowM3s ?? null,
         maximumFlowAt: maximum?.time ?? null,
-        points: [...hourlyFlows.values()]
-          .sort((left, right) => left.hourFromFloodPeak - right.hourFromFloodPeak)
-          .map(({ distance, ...point }) => point),
+        points: displayedPoints,
       };
     });
 
-    return {
+    events.push({
       ...event,
       telemetryPeakLevelM: peak.levelM,
       telemetryPeakAt: peak.time,
@@ -875,8 +895,8 @@ async function buildMucumHistoricalFloods() {
         .sort((left, right) => left.hourFromPeak - right.hourFromPeak)
         .map(({ distance, ...point }) => point),
       damFlows,
-    };
-  }));
+    });
+  }
 
   cachedHistoricalFloods = {
     generatedAt: new Date().toISOString(),
@@ -892,7 +912,8 @@ async function buildMucumHistoricalFloods() {
 }
 
 async function saveHydrologicalProjectionRun(projection) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !projectionRunStorageAvailable) return;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return 'armazenamento_de_rodadas_nao_configurado';
+  if (!projectionRunStorageAvailable) return 'tabela_de_rodadas_nao_instalada';
 
   try {
     await supabaseRest('hydrological_projection_runs', {
@@ -911,14 +932,16 @@ async function saveHydrologicalProjectionRun(projection) {
         payload: projection,
       }),
     });
+    return 'coletando_historico_de_previsoes';
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('hydrological_projection_runs') && (message.includes('PGRST205') || message.includes('404'))) {
       projectionRunStorageAvailable = false;
       console.warn('Historico de projecoes desativado ate rodar supabase/20260718_hydrological_projections.sql.');
-      return;
+      return 'tabela_de_rodadas_nao_instalada';
     }
     console.warn(`Nao foi possivel salvar a rodada da projecao: ${message}`);
+    return 'falha_ao_armazenar_rodada';
   }
 }
 
@@ -941,7 +964,7 @@ async function buildMucumCurrentData(searchParams = new URLSearchParams()) {
       telemetryPayload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
         Codigos_Estacoes: telemetryCodes.join(','),
         'Tipo Filtro Data': 'DATA_LEITURA',
-        'Data de Busca (yyyy-MM-dd)': formatDate(new Date()),
+        'Data de Busca (yyyy-MM-dd)': currentSaoPauloDate(),
         'Range Intervalo de busca': telemetryRange,
       });
     } catch (error) {
@@ -1221,7 +1244,7 @@ async function buildRegionalRainfall(context, telemetryReadings, rainfallWindowH
         const telemetryRainPayload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
           Codigos_Estacoes: stationCodeBatch.join(','),
           'Tipo Filtro Data': 'DATA_LEITURA',
-          'Data de Busca (yyyy-MM-dd)': formatDate(new Date()),
+          'Data de Busca (yyyy-MM-dd)': currentSaoPauloDate(),
           'Range Intervalo de busca': telemetryRangeForHours(rainfallWindowHours),
         });
         const additionalReadings = enrichStationReadings(
@@ -1461,7 +1484,7 @@ async function fetchTelemetryRainStation(station, rainfallWindowHours = 24) {
     const payload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v1', {
       'Código da Estação': station.code,
       'Tipo Filtro Data': 'DATA_LEITURA',
-      'Data de Busca (yyyy-MM-dd)': formatDate(new Date()),
+      'Data de Busca (yyyy-MM-dd)': currentSaoPauloDate(),
       'Range Intervalo de busca': telemetryRangeForHours(rainfallWindowHours),
     });
     const rows = normalizeItems(payload.items);
@@ -1666,7 +1689,7 @@ async function syncDamReadingsFromAna() {
   const payload = await anaRequest('/EstacoesTelemetricas/HidroinfoanaSerieTelemetricaAdotada/v2', {
     Codigos_Estacoes: allCodes.join(','),
     'Tipo Filtro Data': 'DATA_LEITURA',
-    'Data de Busca (yyyy-MM-dd)': formatDate(new Date()),
+    'Data de Busca (yyyy-MM-dd)': currentSaoPauloDate(),
     'Range Intervalo de busca': 'DIAS_2',
   });
   const telemetryRows = normalizeItems(payload.items);
@@ -1772,6 +1795,7 @@ function buildDamReadingFromTelemetry(config, latestByStation, damsByName) {
       inflowCodes: config.inflowCodes,
       reservoirCode: config.reservoirCode,
       outflowCodes: config.outflowCodes,
+      sections: config.sections,
       note: 'Leitura derivada de estacoes telemetricas ANA associadas a UHE/barramento. Nao substitui boletim operacional oficial da usina.',
       stations,
     },
@@ -1786,7 +1810,13 @@ function latestMeasuredAt(readings) {
 }
 
 function normalizeAnaTimestamp(value) {
-  const parsed = new Date(String(value).replace(' ', 'T').replace(/\.0$/, ''));
+  if (!value) return value;
+  const raw = String(value).trim().replace(' ', 'T');
+  const hasExplicitTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  const normalized = hasExplicitTimezone
+    ? raw
+    : `${raw.replace(/\.\d+$/, '')}-03:00`;
+  const parsed = new Date(normalized);
 
   if (Number.isNaN(parsed.getTime())) {
     return value;
@@ -1815,7 +1845,29 @@ async function getLatestDamReadings() {
     return [];
   }
 
-  return await response.json();
+  const rows = await response.json();
+  return rows.map(enrichDamHydrometricSections);
+}
+
+function enrichDamHydrometricSections(dam) {
+  const config = DAM_TELEMETRY_CONFIGS.find((item) => normalizeText(item.damName) === normalizeText(dam.dam_name));
+  const stations = dam.raw_payload?.stations ?? {};
+  const hydrometricSections = (config?.sections ?? []).map((section) => {
+    const reading = section.stationCode ? stations[section.stationCode] ?? null : null;
+    return {
+      key: section.key,
+      label: section.label,
+      station_code: section.stationCode,
+      station_name: section.stationName,
+      flow_m3s: typeof reading?.flowM3s === 'number' ? reading.flowM3s : null,
+      river_level_m: typeof reading?.riverLevelM === 'number' ? reading.riverLevelM : null,
+      measured_at: reading?.measuredAt ?? null,
+      available: Boolean(reading && (typeof reading.flowM3s === 'number' || typeof reading.riverLevelM === 'number')),
+      note: section.note ?? null,
+    };
+  });
+
+  return { ...dam, hydrometric_sections: hydrometricSections };
 }
 
 function summarizeTelemetryRows(rows) {
@@ -1824,7 +1876,7 @@ function summarizeTelemetryRows(rows) {
     return {
       stationCode,
       stationName: stringFromKeys(row, ['NomeEstacao', 'Estacao_Nome', 'Nome_Estacao', 'Nome']),
-      measuredAt: stringFromKeys(row, ['DataHora', 'Data_Hora_Medicao', 'Data_Medicao', 'DataHoraMedicao', 'Data']),
+      measuredAt: normalizeAnaTimestamp(stringFromKeys(row, ['DataHora', 'Data_Hora_Medicao', 'Data_Medicao', 'DataHoraMedicao', 'Data'])),
       rainfallMm: numberFromKeyIncludes(row, ['chuva', 'precipit']),
       riverLevelM: normalizeLevel(numberFromKeyIncludes(row, ['cota', 'nivel', 'nível'])),
       flowM3s: numberFromKeyIncludes(row, ['vazao', 'vazão']),
@@ -1937,6 +1989,17 @@ function roundNumber(value) {
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
+}
+
+function currentSaoPauloDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 async function anaRequest(path, params = {}) {
